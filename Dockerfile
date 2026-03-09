@@ -17,7 +17,7 @@ WORKDIR /build
 
 # 根据目标架构下载对应的 mihomo 二进制
 RUN case "${TARGETARCH}" in \
-        "amd64") ARCH="amd64" ;; \
+        "amd64") ARCH="amd64-compatible" ;; \
         "arm64") ARCH="arm64" ;; \
         "arm") ARCH="armv7" ;; \
         *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
