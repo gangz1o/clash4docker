@@ -147,7 +147,7 @@ sed_inplace() {
         return 1
     fi
     if sed "${expr}" "${file}" > "${temp_file}"; then
-        cp "${temp_file}" "${file}"
+        cp -f "${temp_file}" "${file}"
     else
         log_error "❌ sed 执行失败，配置文件未修改"
         rm -f "${temp_file}"
