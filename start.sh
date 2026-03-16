@@ -188,14 +188,21 @@ update_allow_lan() {
     log_info "✅ allow-lan 已更新为 ${allow_lan}"
 }
 
-# 确保 external-controller 配置正确
+# 确保 external-controller 配置正确（默认值: 0.0.0.0:9090）
 ensure_external_controller() {
     local config="$1"
-    
-    # 检查是否有 external-controller 配置
-    if ! grep -qE "^external-controller:" "${config}"; then
+    local default_value="0.0.0.0:9090"
+    local default_pattern="0\.0\.0\.0:9090"
+
+    if grep -qE "^external-controller:" "${config}"; then
+        # 已存在，检查值是否为默认值，不是则修正
+        if ! grep -qE "^external-controller: ${default_pattern}$" "${config}"; then
+            log_info "🔗 修正 external-controller 配置为默认值..."
+            sed -i "s/^external-controller:.*$/external-controller: ${default_value}/" "${config}"
+        fi
+    else
         log_info "🔗 添加 external-controller 配置..."
-        sed -i "1i external-controller: 0.0.0.0:9090" "${config}"
+        sed -i "1i external-controller: ${default_value}" "${config}"
     fi
 }
 
