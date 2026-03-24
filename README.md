@@ -128,13 +128,14 @@ docker pull --platform linux/arm64 gangz1o/glash:latest
 
 ### 环境变量
 
-| 变量             | 说明                                 | 示例                      |
-| ---------------- | ------------------------------------ | ------------------------- |
-| `SUB_URL`        | 订阅地址，支持返回 Clash 配置的链接  | `https://example.com/sub` |
-| `SUB_CRON`       | 自动更新的 cron 表达式               | `0 */6 * * *`             |
-| `SECRET`         | Dashboard 登录密钥，会自动注入配置   | `my-password`             |
-| `ALLOW_LAN`      | 是否允许局域网连接，默认不修改配置   | `true` 或 `false`         |
-| `DOWNLOAD_PROXY` | 首次下载订阅时使用的外部代理（可选） | `http://192.168.1.1:7890` |
+| 变量               | 说明                                                           | 示例                      |
+| ------------------ | -------------------------------------------------------------- | ------------------------- |
+| `SUB_URL`          | 订阅地址，支持返回 Clash 配置的链接                            | `https://example.com/sub` |
+| `SUB_CRON`         | 自动更新的 cron 表达式                                         | `0 */6 * * *`             |
+| `SECRET`           | Dashboard 登录密钥，会自动注入配置                             | `my-password`             |
+| `ALLOW_LAN`        | 是否允许局域网连接，默认不修改配置                             | `true` 或 `false`         |
+| `DOWNLOAD_PROXY`   | 首次下载订阅时使用的外部代理（可选）                           | `http://192.168.1.1:7890` |
+| `SUB_USER_AGENT`   | 下载订阅时使用的 User-Agent，默认 `clash.meta`（可选）         | `clash.meta`              |
 
 ### 工作逻辑
 

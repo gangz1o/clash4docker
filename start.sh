@@ -114,7 +114,7 @@ download_subscription() {
         rm -f "${temp_file}"
         
         # 下载到临时文件（使用 /tmp 避免文件被占用）
-        if curl -fsSL ${proxy_args} --connect-timeout 60 --max-time 300 --retry 2 --retry-delay 3 -o "${temp_file}" "${url}"; then
+        if curl -fsSL ${proxy_args} -A "${SUB_USER_AGENT:-clash.meta}" --connect-timeout 60 --max-time 300 --retry 2 --retry-delay 3 -o "${temp_file}" "${url}"; then
             # 验证下载的文件完整性
             if validate_config "${temp_file}"; then
                 # 使用 cp 而不是 mv，避免跨文件系统问题和文件占用问题
@@ -329,6 +329,7 @@ SCRIPT
 SUB_URL=${SUB_URL}
 SECRET=${SECRET}
 ALLOW_LAN=${ALLOW_LAN}
+SUB_USER_AGENT=${SUB_USER_AGENT}
 ${cron_schedule} /app/update_sub.sh >> /var/log/subscription.log 2>&1
 EOF
     
@@ -364,6 +365,7 @@ SECRET=$(echo "${SECRET}" | sed "s/^['\"]//;s/['\"]$//")
 SUB_CRON=$(echo "${SUB_CRON}" | sed "s/^['\"]//;s/['\"]$//")
 DOWNLOAD_PROXY=$(echo "${DOWNLOAD_PROXY}" | sed "s/^['\"]//;s/['\"]$//")
 ALLOW_LAN=$(echo "${ALLOW_LAN}" | sed "s/^['\"]//;s/['\"]$//")
+SUB_USER_AGENT=$(echo "${SUB_USER_AGENT}" | sed "s/^['\"]//;s/['\"]$//")
 
 # 确保配置目录存在
 mkdir -p "${CONFIG_DIR}"
