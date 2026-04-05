@@ -184,6 +184,48 @@ update_secret() {
     log_info "✅ secret 已更新"
 }
 
+# 注入 TUN 模式配置
+# 参数: config, tun_enabled (true/false)
+# 若 tun_enabled 为空则不做任何修改
+inject_tun() {
+    local config="$1"
+    local tun_enabled="$2"
+
+    if [ -z "${tun_enabled}" ]; then
+        return 0
+    fi
+
+    log_info "🔗 正在更新配置文件中的 tun 配置..."
+
+    # 移除现有的 tun 配置块（从 ^tun: 到下一个顶级 key 之前）
+    local temp_file
+    if ! temp_file=$(mktemp); then
+        log_error "❌ 无法创建临时文件"
+        return 1
+    fi
+    awk '/^tun:/{skip=1; next} skip && /^[^ \t]/{skip=0} !skip{print}' "${config}" > "${temp_file}"
+    cp -f "${temp_file}" "${config}"
+    rm -f "${temp_file}"
+
+    if [ "${tun_enabled}" = "true" ]; then
+        cat >> "${config}" << 'EOF'
+tun:
+  enable: true
+  stack: mixed
+  auto-route: true
+  auto-redirect: true
+  auto-detect-interface: true
+EOF
+        log_info "✅ tun 模式已启用"
+    else
+        cat >> "${config}" << 'EOF'
+tun:
+  enable: false
+EOF
+        log_info "✅ tun 模式已禁用"
+    fi
+}
+
 # 更新配置文件中的 allow-lan
 update_allow_lan() {
     local config="$1"
@@ -290,6 +332,9 @@ update_subscription() {
         if [ -n "${ALLOW_LAN}" ]; then
             update_allow_lan "${CONFIG_FILE}" "${ALLOW_LAN}"
         fi
+
+        # 注入 tun 配置
+        inject_tun "${CONFIG_FILE}" "${TUN_ENABLED}"
         
         # 确保 external-controller 配置正确
         ensure_external_controller "${CONFIG_FILE}"
@@ -329,6 +374,7 @@ SCRIPT
 SUB_URL=${SUB_URL}
 SECRET=${SECRET}
 ALLOW_LAN=${ALLOW_LAN}
+TUN_ENABLED=${TUN_ENABLED}
 SUB_USER_AGENT=${SUB_USER_AGENT}
 ${cron_schedule} /app/update_sub.sh >> /var/log/subscription.log 2>&1
 EOF
@@ -365,6 +411,7 @@ SECRET=$(echo "${SECRET}" | sed "s/^['\"]//;s/['\"]$//")
 SUB_CRON=$(echo "${SUB_CRON}" | sed "s/^['\"]//;s/['\"]$//")
 DOWNLOAD_PROXY=$(echo "${DOWNLOAD_PROXY}" | sed "s/^['\"]//;s/['\"]$//")
 ALLOW_LAN=$(echo "${ALLOW_LAN}" | sed "s/^['\"]//;s/['\"]$//")
+TUN_ENABLED=$(echo "${TUN_ENABLED}" | sed "s/^['\"]//;s/['\"]$//")
 SUB_USER_AGENT=$(echo "${SUB_USER_AGENT}" | sed "s/^['\"]//;s/['\"]$//")
 
 # 确保配置目录存在
@@ -407,6 +454,8 @@ if [ -n "${SUB_URL}" ]; then
             if [ -n "${ALLOW_LAN}" ]; then
                 update_allow_lan "${CONFIG_FILE}" "${ALLOW_LAN}"
             fi
+            # 注入 tun 配置
+            inject_tun "${CONFIG_FILE}" "${TUN_ENABLED}"
             ensure_external_controller "${CONFIG_FILE}"
             
             if start_mihomo; then
@@ -451,6 +500,8 @@ if [ -n "${SUB_URL}" ]; then
         if [ -n "${ALLOW_LAN}" ]; then
             update_allow_lan "${CONFIG_FILE}" "${ALLOW_LAN}"
         fi
+        # 注入 tun 配置
+        inject_tun "${CONFIG_FILE}" "${TUN_ENABLED}"
         ensure_external_controller "${CONFIG_FILE}"
         
         # 启动或重启 mihomo
@@ -493,6 +544,9 @@ if [ -n "${SUB_URL}" ]; then
             update_allow_lan "${CONFIG_FILE}" "${ALLOW_LAN}"
         fi
         
+        # 注入 tun 配置
+        inject_tun "${CONFIG_FILE}" "${TUN_ENABLED}"
+        
         # 确保 external-controller 配置正确
         ensure_external_controller "${CONFIG_FILE}"
         
@@ -519,6 +573,9 @@ else
     if [ -n "${ALLOW_LAN}" ]; then
         update_allow_lan "${CONFIG_FILE}" "${ALLOW_LAN}"
     fi
+    
+    # 注入 tun 配置
+    inject_tun "${CONFIG_FILE}" "${TUN_ENABLED}"
     
     # 确保 external-controller 配置正确
     ensure_external_controller "${CONFIG_FILE}"
