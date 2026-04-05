@@ -110,6 +110,53 @@ services:
       - ALLOW_LAN=true
 ```
 
+### 模式三：TUN 模式
+
+TUN 模式可接管系统全局流量，无需手动配置代理。设置 `TUN_ENABLED=true` 后，每次重启均自动恢复 TUN 状态，无需手动在 Dashboard 中开启。
+
+> ⚠️ **注意**：TUN 模式需要容器具有 `NET_ADMIN` 能力和 `/dev/net/tun` 设备，请勿在不受信任的环境中使用。
+
+#### Docker Run
+
+```bash
+docker run -d \
+  --name glash \
+  --restart unless-stopped \
+  --cap-add NET_ADMIN \
+  --device /dev/net/tun:/dev/net/tun \
+  -p 7890:7890 \
+  -p 7891:7891 \
+  -p 9090:9090 \
+  -v /path/to/config:/root/.config/mihomo \
+  -e SUB_URL=https://your-subscription-url.com/config \
+  -e TUN_ENABLED=true \
+  gangz1o/glash:latest
+```
+
+#### Docker Compose
+
+```yaml
+services:
+  glash:
+    image: gangz1o/glash:latest
+    container_name: glash
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - '7890:7890'
+      - '7891:7891'
+      - '9090:9090'
+    volumes:
+      - ./config:/root/.config/mihomo
+    environment:
+      - TZ=Asia/Shanghai
+      - SUB_URL=https://your-subscription-url.com/config
+      - TUN_ENABLED=true
+```
+
 ### 指定架构下载
 
 默认自动匹配当前平台，如需指定架构：
@@ -134,6 +181,7 @@ docker pull --platform linux/arm64 gangz1o/glash:latest
 | `SUB_CRON`         | 自动更新的 cron 表达式                                         | `0 */6 * * *`             |
 | `SECRET`           | Dashboard 登录密钥，会自动注入配置                             | `my-password`             |
 | `ALLOW_LAN`        | 是否允许局域网连接，默认不修改配置                             | `true` 或 `false`         |
+| `TUN_ENABLED`      | 是否启用 TUN 模式，重启后自动恢复（需配合 Docker 权限）        | `true` 或 `false`         |
 | `DOWNLOAD_PROXY`   | 首次下载订阅时使用的外部代理（可选）                           | `http://192.168.1.1:7890` |
 | `SUB_USER_AGENT`   | 下载订阅时使用的 User-Agent，默认 `clash.meta`（可选）         | `clash.meta`              |
 
@@ -162,6 +210,11 @@ docker pull --platform linux/arm64 gangz1o/glash:latest
 5. **ALLOW_LAN 注入**：
    - 如果设置了 `ALLOW_LAN`，会自动写入配置文件的 `allow-lan` 字段
    - 设置为 `true` 允许局域网连接，`false` 禁止
+
+6. **TUN_ENABLED 注入**：
+   - 如果设置了 `TUN_ENABLED=true`，每次启动和订阅更新后自动向配置写入 TUN 模式配置段
+   - 解决了通过 Dashboard UI 开启 TUN 后重启丢失状态的问题
+   - 需要同时在 docker-compose.yml 中开启 `NET_ADMIN` 权限和 `/dev/net/tun` 设备
 
 > **提示**：如果订阅地址需要代理访问且本地没有配置文件，请设置 `DOWNLOAD_PROXY` 指向一个可用的代理。
 

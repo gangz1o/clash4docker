@@ -56,6 +56,18 @@ dns:
     ipcidr:
       - 240.0.0.0/4
 
+# ==================== TUN 模式（可选）====================
+# 推荐通过环境变量 TUN_ENABLED=true 启用 TUN 模式，重启后自动恢复。
+# 注意：设置 TUN_ENABLED 后，下方手动配置将被覆盖，以环境变量为准。
+# 启用 TUN 模式还需要：Docker 容器的 NET_ADMIN 权限及 /dev/net/tun 设备。
+# 若通过 Dashboard UI 手动开启 TUN，重启后状态不会保留，建议使用 TUN_ENABLED。
+# tun:
+#   enable: true
+#   stack: mixed          # 可选: system / gvisor / mixed
+#   auto-route: true
+#   auto-redirect: true
+#   auto-detect-interface: true
+
 # ==================== 代理节点 ====================
 proxies:
   # VMess 示例
