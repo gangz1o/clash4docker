@@ -332,6 +332,12 @@ https://docker.apiba.cn
 - **MetacubexD**: v1.244.2
 - **架构**: linux/amd64, linux/arm64
 
+## 社区交流
+
+有问题、有想法，或者就是想和一群搞开发的人聊聊？
+
+- **论坛**：[linux.do](https://linux.do/) —— 来这里讨论、分享你的配置、反馈问题，欢迎常驻。
+
 ## 致谢
 
 感谢以下开源项目：
