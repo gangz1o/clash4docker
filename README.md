@@ -308,6 +308,16 @@ rules:
 ## 贡献与支持
 如果你有好的需求或者发现了一些Bug, 欢迎PR，一起共建开源生态
 
+## Star History
+
+<a href="https://www.star-history.com/?repos=gangz1o%2Fclash4docker&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=gangz1o/clash4docker&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=gangz1o/clash4docker&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=gangz1o/clash4docker&type=date&legend=top-left" />
+ </picture>
+</a>
+
 ### 一些可用docker加速源
 
 ```bash
