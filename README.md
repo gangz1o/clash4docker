@@ -311,6 +311,105 @@ rules:
 ![zDENCwikV4ZKAxrBwPjKsj3MXUYTpxiR.webp](https://cdn.nodeimage.com/i/zDENCwikV4ZKAxrBwPjKsj3MXUYTpxiR.webp)
 ![gvdOcbUtUASmKtlfKY7crcokkIQYY0nM.webp](https://cdn.nodeimage.com/i/gvdOcbUtUASmKtlfKY7crcokkIQYY0nM.webp)
 
+## 常见问题
+
+### Q1：Dashboard 提示"混合内容"（Mixed Content）错误，无法连接后端
+
+**现象**：通过 HTTPS 地址访问 Dashboard（例如 `https://metacubex.github.io/metacubexd/`），填入后端地址 `http://your-server:9090` 后，浏览器报错 `Mixed Content` 并拒绝请求。
+
+**原因**：HTTPS 页面不允许发起 HTTP 请求，属于浏览器安全限制，无法绕过。
+
+**解决方案（推荐）：用反向代理同时代理前端页面和 API**
+
+在服务器上配置 nginx，将同一个 HTTPS 域名同时反代 Dashboard UI 和 mihomo API：
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name your-domain.com;
+    # ssl_certificate / ssl_certificate_key 省略
+
+    # 反代 Dashboard UI
+    location /ui/ {
+        proxy_pass http://127.0.0.1:9090/ui/;
+    }
+
+    # 反代 mihomo API（Dashboard 会向同域名发起 API 请求）
+    location / {
+        proxy_pass http://127.0.0.1:9090/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+配置完成后，通过 `https://your-domain.com/ui/` 访问 Dashboard，后端地址填 `https://your-domain.com`，前端和 API 均走 HTTPS，不再触发混合内容限制。
+
+**备选方案**：直接用 HTTP 地址访问内置 Dashboard，例如 `http://your-server:9090/ui/`，避免 HTTPS 限制。
+
+---
+
+### Q2：订阅下载失败，容器无法启动或一直用旧配置
+
+1. 检查 `SUB_URL` 是否正确，可在宿主机用 `curl -v "$SUB_URL"` 验证是否可以直连访问
+2. 如果订阅地址需要代理才能访问，且本地**没有**现成配置文件，请通过 `DOWNLOAD_PROXY` 提供一个可用的外部代理：
+   ```bash
+   -e DOWNLOAD_PROXY=http://192.168.1.1:7890
+   ```
+3. 查看容器日志确认具体报错：
+   ```bash
+   docker logs glash
+   ```
+4. 查看订阅更新专项日志：
+   ```bash
+   docker exec glash cat /var/log/subscription.log
+   ```
+
+---
+
+### Q3：TUN 模式在 Dashboard 手动开启后，重启容器就失效了
+
+TUN 状态写在运行时内存中，容器重启后不会保留。请通过环境变量持久化：
+
+```yaml
+environment:
+  - TUN_ENABLED=true
+```
+
+同时确保 compose 文件中已添加必要权限：
+
+```yaml
+cap_add:
+  - NET_ADMIN
+devices:
+  - /dev/net/tun:/dev/net/tun
+```
+
+设置后，每次重启容器都会自动向配置文件注入 TUN 配置段并生效。
+
+---
+
+### Q4：容器启动了，但浏览器打开 `http://127.0.0.1:9090/ui/` 无响应
+
+1. 确认容器正在运行：`docker ps | grep glash`
+2. 确认宿主机端口映射正确（9090 已映射）：`docker port glash`
+3. 如果是远程服务器，请将 `127.0.0.1` 替换为服务器实际 IP，并确认防火墙已放行 9090 端口
+4. 检查配置文件中是否包含 `external-controller: 0.0.0.0:9090`（缺少此配置则 API 不启动）
+
+---
+
+### Q5：挂载了新的 `config.yaml`，但修改不生效
+
+- 使用 `:ro`（只读）模式挂载单个文件时，直接重启容器即可生效
+- **使用订阅功能时禁止用 `:ro` 模式**，因为 start.sh 需要向配置文件写入 `secret`、`allow-lan` 等字段
+- 若修改配置后容器行为未变化，请先检查挂载路径是否正确：
+  ```bash
+  docker exec glash cat /root/.config/mihomo/config.yaml | head -5
+  ```
+
+---
+
 ## 贡献与支持
 如果你有好的需求或者发现了一些Bug, 欢迎PR，一起共建开源生态
 
