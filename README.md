@@ -51,7 +51,7 @@ docker run -d \
   -p 7891:7891 \
   -p 9090:9090 \
   -v /path/to/config:/root/.config/mihomo \
-  -e SUB_URL=https://your-subscription-url.com/config \
+  -e SUB_URL=https://your-subscription-url \
   -e SUB_CRON="0 */6 * * *" \
   -e SECRET=your-dashboard-password \
   -e ALLOW_LAN=true \
@@ -74,7 +74,7 @@ services:
       - ./config:/root/.config/mihomo
     environment:
       - TZ=Asia/Shanghai
-      - SUB_URL=https://your-subscription-url.com/config
+      - SUB_URL=https://your-subscription-url
       - SUB_CRON=0 */6 * * *
       - SECRET=your-dashboard-password
       - ALLOW_LAN=true
@@ -134,7 +134,7 @@ docker run -d \
   -p 7891:7891 \
   -p 9090:9090 \
   -v /path/to/config:/root/.config/mihomo \
-  -e SUB_URL=https://your-subscription-url.com/config \
+  -e SUB_URL=https://your-subscription-url \
   -e TUN_ENABLED=true \
   gangz1o/glash:latest
 ```
@@ -159,7 +159,7 @@ services:
       - ./config:/root/.config/mihomo
     environment:
       - TZ=Asia/Shanghai
-      - SUB_URL=https://your-subscription-url.com/config
+      - SUB_URL=https://your-subscription-url
       - TUN_ENABLED=true
 ```
 
