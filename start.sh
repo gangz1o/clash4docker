@@ -184,6 +184,65 @@ update_secret() {
     log_info "✅ secret 已更新"
 }
 
+# 确保配置文件中包含 unified-delay 和 tcp-concurrent 设置
+force_boolean_key_true_preserve_comment() {
+    local config="$1"
+    local key="$2"
+    local escaped_key
+
+    escaped_key=$(printf '%s\n' "${key}" | sed 's/[][\/.^$*]/\\&/g')
+    sed_inplace "/^[[:space:]]*${escaped_key}:[[:space:]]*/{
+s/^\([[:space:]]*${escaped_key}:[[:space:]]*\)[^#]*\([[:space:]]*#.*\)\{0,1\}$/\1true\2/
+}" "${config}"
+}
+
+ensure_unified_delay_and_tcp_concurrent() {
+    local config="$1"
+    local force_override="${FORCE_UNIFIED_DELAY_AND_TCP_CONCURRENT:-false}"
+    
+    log_info "🔗 正在确保配置文件中包含 unified-delay 和 tcp-concurrent 设置..."
+    
+    # 处理 unified-delay
+    if grep -qE "^[[:space:]]*unified-delay:" "${config}"; then
+        if [ "${force_override}" = "true" ]; then
+            force_boolean_key_true_preserve_comment "${config}" "unified-delay"
+        fi
+    else
+        # 尝试在 secret 后面添加（如果存在 secret）
+        if grep -qE "^[[:space:]]*secret:" "${config}"; then
+            sed_inplace "/^[[:space:]]*secret:/a unified-delay: true" "${config}"
+        elif grep -qE "^[[:space:]]*external-controller:" "${config}"; then
+            sed_inplace "/^[[:space:]]*external-controller:/a unified-delay: true" "${config}"
+        else
+            sed_inplace "1i unified-delay: true" "${config}"
+        fi
+    fi
+    
+    # 处理 tcp-concurrent
+    if grep -qE "^[[:space:]]*tcp-concurrent:" "${config}"; then
+        if [ "${force_override}" = "true" ]; then
+            force_boolean_key_true_preserve_comment "${config}" "tcp-concurrent"
+        fi
+    else
+        # 尝试在 unified-delay 后面添加
+        if grep -qE "^[[:space:]]*unified-delay:" "${config}"; then
+            sed_inplace "/^[[:space:]]*unified-delay:/a tcp-concurrent: true" "${config}"
+        elif grep -qE "^[[:space:]]*secret:" "${config}"; then
+            sed_inplace "/^[[:space:]]*secret:/a tcp-concurrent: true" "${config}"
+        elif grep -qE "^[[:space:]]*external-controller:" "${config}"; then
+            sed_inplace "/^[[:space:]]*external-controller:/a tcp-concurrent: true" "${config}"
+        else
+            sed_inplace "1i tcp-concurrent: true" "${config}"
+        fi
+    fi
+    
+    if [ "${force_override}" = "true" ]; then
+        log_info "✅ unified-delay 和 tcp-concurrent 已检查；缺失项已补齐，存在项已强制设为 true"
+    else
+        log_info "✅ unified-delay 和 tcp-concurrent 已检查；仅为缺失项补齐默认值，不覆盖已有配置"
+    fi
+}
+
 # 注入 TUN 模式配置
 # 参数: config, tun_enabled (true/false)
 # 若 tun_enabled 为空则不做任何修改
@@ -333,6 +392,9 @@ update_subscription() {
             update_allow_lan "${CONFIG_FILE}" "${ALLOW_LAN}"
         fi
 
+        # 确保统一延迟和并发连接
+        ensure_unified_delay_and_tcp_concurrent "${CONFIG_FILE}"
+
         # 注入 tun 配置
         inject_tun "${CONFIG_FILE}" "${TUN_ENABLED}"
         
@@ -454,6 +516,8 @@ if [ -n "${SUB_URL}" ]; then
             if [ -n "${ALLOW_LAN}" ]; then
                 update_allow_lan "${CONFIG_FILE}" "${ALLOW_LAN}"
             fi
+            # 确保统一延迟和并发连接
+            ensure_unified_delay_and_tcp_concurrent "${CONFIG_FILE}"
             # 注入 tun 配置
             inject_tun "${CONFIG_FILE}" "${TUN_ENABLED}"
             ensure_external_controller "${CONFIG_FILE}"
@@ -500,6 +564,8 @@ if [ -n "${SUB_URL}" ]; then
         if [ -n "${ALLOW_LAN}" ]; then
             update_allow_lan "${CONFIG_FILE}" "${ALLOW_LAN}"
         fi
+        # 确保统一延迟和并发连接
+        ensure_unified_delay_and_tcp_concurrent "${CONFIG_FILE}"
         # 注入 tun 配置
         inject_tun "${CONFIG_FILE}" "${TUN_ENABLED}"
         ensure_external_controller "${CONFIG_FILE}"
@@ -544,6 +610,9 @@ if [ -n "${SUB_URL}" ]; then
             update_allow_lan "${CONFIG_FILE}" "${ALLOW_LAN}"
         fi
         
+        # 确保统一延迟和并发连接
+        ensure_unified_delay_and_tcp_concurrent "${CONFIG_FILE}"
+        
         # 注入 tun 配置
         inject_tun "${CONFIG_FILE}" "${TUN_ENABLED}"
         
@@ -573,6 +642,9 @@ else
     if [ -n "${ALLOW_LAN}" ]; then
         update_allow_lan "${CONFIG_FILE}" "${ALLOW_LAN}"
     fi
+    
+    # 确保统一延迟和并发连接
+    ensure_unified_delay_and_tcp_concurrent "${CONFIG_FILE}"
     
     # 注入 tun 配置
     inject_tun "${CONFIG_FILE}" "${TUN_ENABLED}"
