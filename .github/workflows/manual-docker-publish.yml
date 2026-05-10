@@ -1,0 +1,42 @@
+name: Manual Docker Build
+
+on:
+  workflow_dispatch: # 允许手动点击 "Run workflow" 触发
+    inputs:
+      tag:
+        description: 'Docker image tag'
+        required: true
+        default: 'latest'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # 允许推送镜像到 GitHub Packages
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }} # 自动生成的 Token，无需手动配置 Secret
+
+      - name: Build and push
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          # 镜像会存放在你的 GitHub 仓库下，路径为: ghcr.io/你的用户名/你的仓库名:标签
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ github.event.inputs.tag }}
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
