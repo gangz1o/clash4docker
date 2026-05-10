@@ -29,6 +29,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }} # 自动生成的 Token，无需手动配置 Secret
 
+      - name: Prepare image name
+        run: |
+          echo "IMAGE_NAME=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
       - name: Build and push
         uses: docker/build-push-action@v4
         with:
@@ -36,7 +40,7 @@ jobs:
           push: true
           # 镜像会存放在你的 GitHub 仓库下，路径为: ghcr.io/你的用户名/你的仓库名:标签
           tags: |
-            ghcr.io/${{ github.repository }}:${{ github.event.inputs.tag }}
+            ghcr.io/${{ env.IMAGE_NAME }}:${{ github.event.inputs.tag }}
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
