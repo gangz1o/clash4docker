@@ -4,10 +4,9 @@
     <tr>
       <td align="center" bgcolor="#f6f8fa" style="padding: 20px; border-radius: 8px; border: 1px solid #d0d7de;">
         <a href="https://doloffer.com" target="_blank">
-          <img src="https://cdn.nodeimage.com/i/MbENUNiyjRdvIRrt0GjLTv6mhi41zPO0.webp" alt="DolOffer Logo" height="160" style="margin-bottom: 10px;"/>
+          <img src="https://cdn.nodeimage.com/i/MbENUNiyjRdvIRrt0GjLTv6mhi41zPO0.webp" alt="DolOffer Logo" height="160"/>
         </a>
         <p align="left" style="font-size: 15px; color: #24292f; margin: 10px 0;">
-          💡 <b>本仓库由 DolOffer 倾情赞助：</b><br>
           全网超划算的 <b>ChatGPT Plus / Claude Pro</b> 会员充值平台！支持官方正版订阅，独立账号、共享车位应有尽有。多通道稳定续费，售后无忧，让您用更低的成本体验最顶尖的 AI 工具。
         </p>
         <p align="left" style="font-size: 14px; color: #57606a;">
