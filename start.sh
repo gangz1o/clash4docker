@@ -424,6 +424,63 @@ update_allow_lan() {
     log_info "✅ allow-lan 已更新为 ${allow_lan}"
 }
 
+# 更新配置文件中的代理模式
+update_mode() {
+    local config="$1"
+    local mode="$2"
+
+    if [ -z "${mode}" ]; then
+        return 0
+    fi
+
+    case "${mode}" in
+        rule|global|direct)
+            ;;
+        *)
+            log_warn "❌ MODE 仅支持 rule、global 或 direct，保持配置文件中的代理模式不变"
+            return 0
+            ;;
+    esac
+
+    log_info "🔗 正在更新配置文件中的代理模式..."
+    local temp_file
+    if ! temp_file=$(mktemp "${config}.mode.XXXXXX"); then
+        log_error "❌ 无法创建临时文件"
+        return 1
+    fi
+    if ! cp -p "${config}" "${temp_file}" || ! awk -v mode="${mode}" '
+        function is_mode(line) {
+            return line ~ /^mode[[:space:]]*:/ || line ~ /^"mode"[[:space:]]*:/ || line ~ /^\047mode\047[[:space:]]*:/
+        }
+        NR == 1 && substr($0, 1, 3) == "\357\273\277" {
+            printf "%s", substr($0, 1, 3)
+            $0 = substr($0, 4)
+        }
+        !inserted && ($0 ~ /^[[:space:]]*$/ || $0 ~ /^#/ || $0 ~ /^%/ || $0 ~ /^---([[:space:]]|$)/) {
+            print
+            next
+        }
+        !inserted {
+            print "mode: " mode
+            inserted = 1
+        }
+        !is_mode($0) {
+            print
+        }
+        END {
+            if (!inserted) {
+                print "mode: " mode
+            }
+        }
+    ' "${config}" > "${temp_file}" || ! mv -f "${temp_file}" "${config}"; then
+        rm -f "${temp_file}"
+        log_error "❌ 代理模式更新失败，请挂载可写配置目录而非单个 config.yaml"
+        return 1
+    fi
+    rm -f "${temp_file}"
+    log_info "✅ 代理模式已更新为 ${mode}"
+}
+
 
 
 # ==================== Hook 功能 ====================
@@ -657,18 +714,12 @@ perform_subscription_update() {
         fi
         # ========================================
 
-        # 保持热加载通道在更新前后使用相同的地址和密钥
-        if ! update_secret "${CONFIG_FILE}" "${controller_secret}" || ! ensure_external_controller "${CONFIG_FILE}"; then
-            restore_config_backup "${config_backup}"
+        if ! update_mode "${CONFIG_FILE}" "${MODE}"; then
             return 1
         fi
 
-        # 热加载配置，避免终止主进程导致容器重启
-        if ! reload_mihomo_config "${controller_secret}"; then
-            restore_and_reload_config "${config_backup}" "${controller_secret}" || true
-            return 1
-        fi
-        rm -f "${config_backup}"
+        # 重启 mihomo
+        restart_mihomo
         log_info "🎉 订阅更新完成"
         return 0
     else
@@ -718,6 +769,7 @@ SCRIPT
 SUB_URL=${SUB_URL}
 SECRET=${SECRET}
 ALLOW_LAN=${ALLOW_LAN}
+MODE=${MODE}
 TUN_ENABLED=${TUN_ENABLED}
 DNS_OVERRIDE=${DNS_OVERRIDE}
 SUB_USER_AGENT=${SUB_USER_AGENT}
@@ -757,6 +809,15 @@ SECRET=$(echo "${SECRET}" | sed "s/^['\"]//;s/['\"]$//")
 SUB_CRON=$(echo "${SUB_CRON}" | sed "s/^['\"]//;s/['\"]$//")
 DOWNLOAD_PROXY=$(echo "${DOWNLOAD_PROXY}" | sed "s/^['\"]//;s/['\"]$//")
 ALLOW_LAN=$(echo "${ALLOW_LAN}" | sed "s/^['\"]//;s/['\"]$//")
+MODE=$(echo "${MODE}" | sed "s/^['\"]//;s/['\"]$//")
+case "${MODE}" in
+    ""|rule|global|direct)
+        ;;
+    *)
+        log_warn "❌ MODE 仅支持 rule、global 或 direct，将忽略当前值"
+        MODE=""
+        ;;
+esac
 TUN_ENABLED=$(echo "${TUN_ENABLED}" | sed "s/^['\"]//;s/['\"]$//")
 DNS_OVERRIDE=$(echo "${DNS_OVERRIDE}" | sed "s/^['\"]//;s/['\"]$//")
 SUB_USER_AGENT=$(echo "${SUB_USER_AGENT}" | sed "s/^['\"]//;s/['\"]$//")
@@ -801,6 +862,9 @@ if [ -n "${SUB_URL}" ]; then
             # 更新 allow-lan（如果设置了 ALLOW_LAN 环境变量）
             if [ -n "${ALLOW_LAN}" ]; then
                 update_allow_lan "${CONFIG_FILE}" "${ALLOW_LAN}"
+            fi
+            if ! update_mode "${CONFIG_FILE}" "${MODE}"; then
+                exit 1
             fi
             # 更新 authentication（如果设置了 AUTHENTICATION 环境变量）
             if [ -n "${AUTHENTICATION}" ]; then
@@ -873,6 +937,10 @@ if [ -n "${SUB_URL}" ]; then
         fi
         # ========================================
 
+        if ! update_mode "${CONFIG_FILE}" "${MODE}"; then
+            exit 1
+        fi
+
         # 启动或重启 mihomo
         if [ "${need_start}" = "true" ]; then
             if ! start_mihomo; then
@@ -935,6 +1003,10 @@ if [ -n "${SUB_URL}" ]; then
         fi
         # ========================================
 
+        if ! update_mode "${CONFIG_FILE}" "${MODE}"; then
+            exit 1
+        fi
+
         # 启动 mihomo
         if ! start_mihomo; then
             log_error "❌ mihomo 启动失败，请检查下载的配置文件"
@@ -957,6 +1029,10 @@ else
     # 更新 allow-lan（如果设置了 ALLOW_LAN 环境变量）
     if [ -n "${ALLOW_LAN}" ]; then
         update_allow_lan "${CONFIG_FILE}" "${ALLOW_LAN}"
+    fi
+
+    if ! update_mode "${CONFIG_FILE}" "${MODE}"; then
+        exit 1
     fi
 
     # 更新 authentication（如果设置了 AUTHENTICATION 环境变量）

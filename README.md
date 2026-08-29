@@ -189,6 +189,7 @@ docker pull --platform linux/arm64 gangz1o/glash:latest
 | `SUB_CRON`         | 自动更新的 cron 表达式                                         | `0 */6 * * *`             |
 | `SECRET`           | Dashboard 登录密钥，会自动注入配置                             | `my-password`             |
 | `ALLOW_LAN`        | 是否允许局域网连接，默认不修改配置                             | `true` 或 `false`         |
+| `MODE`             | 固定代理模式，启动和订阅更新后自动恢复                         | `rule`、`global` 或 `direct` |
 | `TUN_ENABLED`      | 是否启用 TUN 模式，重启后自动恢复（需配合 Docker 权限）        | `true` 或 `false`         |
 | `DOWNLOAD_PROXY`   | 首次下载订阅时使用的外部代理（可选）                           | `http://192.168.1.1:7890` |
 | `SUB_USER_AGENT`   | 下载订阅时使用的 User-Agent，默认 `clash.meta`（可选）         | `clash.meta`              |
@@ -227,7 +228,13 @@ docker pull --platform linux/arm64 gangz1o/glash:latest
    - 如果设置了 `ALLOW_LAN`，会自动写入配置文件的 `allow-lan` 字段
    - 设置为 `true` 允许局域网连接，`false` 禁止
 
-7. **TUN_ENABLED 注入**：
+7. **MODE 注入**：
+   - 设置 `MODE=rule`、`MODE=global` 或 `MODE=direct` 后，每次启动和订阅更新都会写入指定代理模式
+   - 未设置时保留订阅配置中的模式，非法值不会修改配置
+   - 解决通过 Dashboard 切换代理模式后，订阅更新或重启恢复原模式的问题
+   - 为保证配置原子更新，使用 `MODE` 时需挂载可写配置目录，不支持单独挂载 `config.yaml`
+
+8. **TUN_ENABLED 注入**：
    - 如果设置了 `TUN_ENABLED=true`，每次启动和订阅更新后自动向配置写入 TUN 模式配置段
    - 解决了通过 Dashboard UI 开启 TUN 后重启丢失状态的问题
    - 需要同时在 docker-compose.yml 中开启 `NET_ADMIN` 权限和 `/dev/net/tun` 设备

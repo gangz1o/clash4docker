@@ -34,6 +34,8 @@ services:
       # - SUB_CRON=0 */6 * * *
       # Dashboard 登录密钥（会自动注入到配置文件中）
       # - SECRET=your-secret-here
+      # 固定代理模式（rule、global 或 direct）
+      # - MODE=global
       # TUN 模式开关（同时需要取消下方 cap_add 和 devices 的注释）
       - TUN_ENABLED=true
       # DNS 覆写开关
