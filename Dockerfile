@@ -51,7 +51,7 @@ LABEL description="Clash Docker with Mihomo Core and MetacubexD Dashboard - Subs
 # 安装运行时依赖
 # curl: 用于下载订阅配置
 # sed/grep: 用于处理配置文件
-RUN apk add --no-cache ca-certificates tzdata bash tini curl sed grep && \
+RUN apk add --no-cache ca-certificates tzdata bash tini curl sed grep flock && \
     mkdir -p /root/.config/mihomo /app/ui /app/geodata /var/log
 
 # 从构建阶段复制文件

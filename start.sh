@@ -7,6 +7,7 @@ UI_DIR="/app/ui"
 GEODATA_DIR="/app/geodata"
 CRON_FILE="/etc/crontabs/root"
 PID_FILE="/var/run/mihomo.pid"
+UPDATE_LOCK_FILE="/var/run/glash-subscription-update.lock"
 RED="\033[31m"
 GREEN="\033[32m"
 YELLOW="\033[33m"
@@ -147,10 +148,8 @@ sed_inplace() {
         log_error "❌ 无法创建临时文件"
         return 1
     fi
-    if sed "${expr}" "${file}" > "${temp_file}"; then
-        cp -f "${temp_file}" "${file}"
-    else
-        log_error "❌ sed 执行失败，配置文件未修改"
+    if ! sed "${expr}" "${file}" > "${temp_file}" || ! cp -f "${temp_file}" "${file}"; then
+        log_error "❌ 配置文件写入失败"
         rm -f "${temp_file}"
         return 1
     fi
@@ -161,26 +160,30 @@ sed_inplace() {
 update_secret() {
     local config="$1"
     local secret="$2"
-    
-    if [ -z "${secret}" ]; then
-        return 0
-    fi
+    local expr
     
     log_info "🔗 正在更新配置文件中的 secret..."
+
+    if grep -Fqx -- "secret: '${secret}'" "${config}"; then
+        log_info "✅ secret 已更新"
+        return 0
+    fi
     
     # 检查配置文件中是否已有 secret 字段
     if grep -qE "^secret:" "${config}"; then
         # 替换现有的 secret
-        sed_inplace "s/^secret:.*$/secret: '${secret}'/" "${config}"
+        expr="s/^secret:.*$/secret: '${secret}'/"
     else
         # 在 external-controller 后面添加 secret
         if grep -qE "^external-controller:" "${config}"; then
-            sed_inplace "/^external-controller:/a secret: '${secret}'" "${config}"
+            expr="/^external-controller:/a secret: '${secret}'"
         else
             # 如果没有 external-controller，直接在文件开头添加
-            sed_inplace "1i secret: '${secret}'" "${config}"
+            expr="1i secret: '${secret}'"
         fi
     fi
+
+    sed_inplace "${expr}" "${config}" || return 1
     
     log_info "✅ secret 已更新"
 }
@@ -527,11 +530,15 @@ ensure_external_controller() {
         # 已存在，检查值是否为默认值，不是则修正
         if ! grep -qE "^external-controller: ${default_pattern}$" "${config}"; then
             log_info "🔗 修正 external-controller 配置为默认值..."
-            sed_inplace "s/^external-controller:.*$/external-controller: ${default_value}/" "${config}"
+            if ! sed_inplace "s/^external-controller:.*$/external-controller: ${default_value}/" "${config}"; then
+                return 1
+            fi
         fi
     else
         log_info "🔗 添加 external-controller 配置..."
-        sed_inplace "1i external-controller: ${default_value}" "${config}"
+        if ! sed_inplace "1i external-controller: ${default_value}" "${config}"; then
+            return 1
+        fi
     fi
 }
 
@@ -580,10 +587,93 @@ restart_mihomo() {
     log_info "🎉 mihomo 重启完成"
 }
 
-# 更新订阅（用于定时任务，通过本地代理下载）
-update_subscription() {
+# 恢复热加载前的配置
+restore_config_backup() {
+    local backup_file="$1"
+
+    if cp -f "${backup_file}" "${CONFIG_FILE}"; then
+        rm -f "${backup_file}"
+        log_warn "⚠️ 已恢复热加载前的配置文件"
+        return 0
+    fi
+
+    log_error "❌ 配置文件恢复失败，备份保留在 ${backup_file}"
+    return 1
+}
+
+# 验证当前 External Controller 可访问且密钥正确
+check_mihomo_controller() {
+    local controller_secret="${1:-}"
+    local request_args=(-fsS --noproxy '*' --connect-timeout 5 --max-time 10)
+
+    if [ -n "${controller_secret}" ]; then
+        request_args+=(-H "Authorization: Bearer ${controller_secret}")
+    fi
+
+    curl "${request_args[@]}" "http://127.0.0.1:9090/version" >/dev/null
+}
+
+# 通过 External Controller 热加载配置，避免终止容器主进程等待的 mihomo
+reload_mihomo_config() {
+    local controller_url="http://127.0.0.1:9090/configs?force=true"
+    local controller_secret="${1:-${SECRET:-}}"
+    local request_args=(
+        -fsS
+        --noproxy '*'
+        --connect-timeout 5
+        --max-time 30
+        -X PUT
+        -H "Content-Type: application/json"
+        -d '{"path":"","payload":""}'
+    )
+
+    if [ -n "${controller_secret}" ]; then
+        request_args+=(-H "Authorization: Bearer ${controller_secret}")
+    fi
+
+    local attempt
+    for attempt in 1 2; do
+        log_info "🔄 正在热加载 mihomo 配置（${attempt}/2）..."
+        if curl "${request_args[@]}" "${controller_url}"; then
+            log_info "🎉 mihomo 配置热加载完成"
+            return 0
+        fi
+        [ "${attempt}" -lt 2 ] && sleep 1
+    done
+
+    log_error "❌ mihomo 配置热加载失败，保持当前进程运行"
+    return 1
+}
+
+# 恢复旧配置，并让仍在运行的 mihomo 回到旧配置
+restore_and_reload_config() {
+    local backup_file="$1"
+    local controller_secret="$2"
+
+    restore_config_backup "${backup_file}" || return 1
+    if ! reload_mihomo_config "${controller_secret}"; then
+        log_error "❌ 旧配置补偿加载失败，运行态可能与磁盘配置不一致"
+        return 1
+    fi
+}
+
+# 执行订阅更新（由带锁的 update_subscription 调用）
+perform_subscription_update() {
     if [ -z "${SUB_URL}" ]; then
         log_warn "❌ 未设置 SUB_URL，跳过订阅更新"
+        return 1
+    fi
+
+    local controller_secret="${SECRET:-}"
+    if ! check_mihomo_controller "${controller_secret}"; then
+        log_error "❌ 无法访问 Mihomo Controller；若配置启用了 secret，请设置匹配的 SECRET 环境变量"
+        return 1
+    fi
+
+    local config_backup
+    if ! config_backup=$(mktemp "${CONFIG_FILE}.backup.XXXXXX") || ! cp -p "${CONFIG_FILE}" "${config_backup}"; then
+        [ -n "${config_backup:-}" ] && rm -f "${config_backup}"
+        log_error "❌ 无法备份当前配置，取消订阅更新"
         return 1
     fi
     
@@ -619,6 +709,7 @@ update_subscription() {
         # ========== 新增：执行外部 Hook ==========
         if ! run_post_subscription_hooks "${CONFIG_FILE}"; then
             log_error "❌ 执行外部Hook失败"
+            restore_config_backup "${config_backup}"
             return 1
         fi
         # ========================================
@@ -632,9 +723,25 @@ update_subscription() {
         log_info "🎉 订阅更新完成"
         return 0
     else
+        rm -f "${config_backup}"
         log_error "❌ 订阅更新失败，保持当前配置"
         return 1
     fi
+}
+
+# 更新订阅（用于定时任务，通过本地代理下载）
+update_subscription() {
+    exec 9>"${UPDATE_LOCK_FILE}"
+    if ! flock -n 9; then
+        log_warn "⚠️ 已有订阅更新正在执行，跳过本次任务"
+        exec 9>&-
+        return 1
+    fi
+
+    perform_subscription_update
+    local status=$?
+    exec 9>&-
+    return "${status}"
 }
 
 # 设置定时任务

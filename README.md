@@ -211,8 +211,9 @@ docker pull --platform linux/arm64 gangz1o/glash:latest
 3. **定时更新**：
    - 如果设置了 `SUB_CRON`，按照 cron 表达式定时更新
    - 通过本地代理下载订阅
-   - 更新成功后自动重启 mihomo 生效
+   - 更新成功后通过 External Controller 热加载配置，不重启 mihomo 或容器
    - 更新失败时保持当前配置运行
+   - 如果当前配置启用了 `secret`，必须设置值相同的 `SECRET` 环境变量供热加载鉴权
 
 4. **SECRET 注入**：
    - 如果设置了 `SECRET`，会自动写入配置文件的 `secret` 字段
