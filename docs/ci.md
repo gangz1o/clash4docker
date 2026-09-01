@@ -5,7 +5,7 @@
 ## 检查层次
 
 - **Shell tests**：运行 `tests/test_mode.sh` 和 `tests/test_reload.sh`，覆盖启动配置和订阅热加载行为。
-- **AMD64 runtime smoke**：构建并启动 `linux/amd64` 镜像，使用仓库内非敏感 fixture 检查容器健康状态、`/version`、`/ui/`，以及调用方安全路径和内置 `/app/ui` 是否同时保留。
+- **AMD64 runtime smoke**：构建并启动 `linux/amd64` 镜像，使用仓库内非敏感 fixture 检查容器健康状态、`/version`、`/ui/`，以及调用方 `SAFE_PATHS` 是否保留。
 - **Platform builds**：无发布地构建 `linux/amd64`、`linux/arm64` 和 `linux/arm/v7`。
 - **CI Gate**：汇总上述层的结果。它是唯一需要加入分支保护的状态检查；其他 job 名称用于定位失败原因。
 

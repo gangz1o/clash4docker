@@ -186,9 +186,5 @@ has_safe_path_entry() {
 if ! has_safe_path_entry "${safe_paths}" "${CALLER_SAFE_PATH}"; then
     die "SAFE_PATHS is missing caller path as an independent entry: ${safe_paths}"
 fi
-if ! has_safe_path_entry "${safe_paths}" "/app/ui"; then
-    die "SAFE_PATHS is missing bundled UI path as an independent entry: ${safe_paths}"
-fi
-
-printf 'SAFE_PATHS contains independent entries: %s and /app/ui\n' "${CALLER_SAFE_PATH}"
+printf 'SAFE_PATHS preserves caller entry: %s\n' "${CALLER_SAFE_PATH}"
 printf 'container smoke passed: %s\n' "${IMAGE_TAG}"

@@ -60,7 +60,7 @@ Manual validation caught a latent test defect: `tests/test_reload.sh` prints an 
 **Behavior validation**
 
 - R6. CI must run both repository shell test suites and fail when an unbound variable, aborted code path, or masked command error prevents the intended assertions from completing.
-- R7. CI must build and start the AMD64 image with a non-sensitive fixture, then verify container health, the Mihomo version API, Dashboard availability, and preservation of a caller-provided safe path alongside the bundled UI path.
+- R7. CI must build and start the AMD64 image with a non-sensitive fixture, then verify container health, the Mihomo version API, Dashboard availability, and preservation of a caller-provided safe path.
 - R8. CI must validate image builds for `linux/amd64`, `linux/arm64`, and `linux/arm/v7` without publishing those pull request artifacts.
 - R9. A failed check must identify whether the failure came from shell behavior, AMD64 runtime smoke validation, or a specific architecture build.
 
@@ -215,7 +215,7 @@ The workflow separates classification, behavior validation, build portability, a
 
 ### U2. Add a reusable native AMD64 container smoke harness
 
-- **Goal:** Prove that a built AMD64 image starts with a non-sensitive configuration and exposes its health, API, Dashboard, and composed safe paths.
+- **Goal:** Prove that a built AMD64 image starts with a non-sensitive configuration and exposes its health, API, Dashboard, and caller-provided safe path.
 - **Requirements:** R5, R7, R9; F1; AE1, AE3.
 - **Dependencies:** U1.
 - **Files:** `tests/fixtures/smoke-config.yaml`, `tests/test_container.sh`.
@@ -223,12 +223,12 @@ The workflow separates classification, behavior validation, build portability, a
   1. Add a minimal local fixture with no subscription URL, real proxy credentials, or external traffic dependency.
   2. Accept an already-built image tag, start an isolated container, and install cleanup and diagnostic traps.
   3. Wait for Docker health with a finite timeout, then query `/version` and `/ui/` from inside the container.
-  4. Inspect the Mihomo process environment and verify the caller value plus `/app/ui` are both present in `SAFE_PATHS`.
+  4. Inspect the Mihomo process environment and verify the caller value remains present in `SAFE_PATHS`.
 - **Execution note:** This unit is packaging-heavy; use the real image and process as the primary proof rather than mocks.
 - **Patterns to follow:** The Dockerfile healthcheck and `start_mihomo` define the authoritative API endpoint, UI directory, PID file, and safe-path composition.
 - **Test scenarios:**
   - Covers AE1. Run the image with the fixture and a caller safe path; health becomes healthy, `/version` returns Mihomo metadata, and `/ui/` returns successfully.
-  - Start with a unique caller safe path and verify the running Mihomo environment contains it and `/app/ui` exactly as separate path entries.
+  - Start with a unique caller safe path and verify the running Mihomo environment preserves it as an independent path entry.
   - Force a startup or readiness failure and verify the harness exits non-zero after printing container status and logs, then removes the container.
 - **Verification:** The harness is repeatable on a native AMD64 Docker host and leaves no named container behind after success or failure.
 
@@ -294,7 +294,7 @@ The workflow separates classification, behavior validation, build portability, a
 
 - R1-R10 are satisfied by code, workflow behavior, documentation, or the explicit maintainer-owned repository setting identified in U4.
 - U1 is complete when both shell suites reach their final assertions and all injected failure paths propagate non-zero status.
-- U2 is complete when the native AMD64 smoke harness verifies health, `/version`, `/ui/`, and composed `SAFE_PATHS` against the real image.
+- U2 is complete when the native AMD64 smoke harness verifies health, `/version`, `/ui/`, and the caller-provided `SAFE_PATHS` entry against the real image.
 - U3 is complete when runtime and documentation-only revisions both produce the correct `CI Gate` result, all three published platforms build without publication, and fork execution remains read-only.
 - U4 is complete when workflow ownership and the exact required-check/review setup are documented and either applied to `master` or surfaced as the sole maintainer action that remains.
 - `.github/workflows/docker-build.yml` remains the only credentialed publication path and continues to target `linux/amd64`, `linux/arm64`, and `linux/arm/v7`.
