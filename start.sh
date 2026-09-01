@@ -15,6 +15,17 @@ BLUE="\033[34m"
 CYAN="\033[36m"
 RESET="\033[0m"
 
+# 可选环境变量在严格模式或被 source 引入时统一使用空值默认值
+: "${SUB_URL:=}"
+: "${SECRET:=}"
+: "${SUB_CRON:=}"
+: "${DOWNLOAD_PROXY:=}"
+: "${ALLOW_LAN:=}"
+: "${MODE:=}"
+: "${TUN_ENABLED:=}"
+: "${DNS_OVERRIDE:=}"
+: "${SUB_USER_AGENT:=}"
+: "${AUTHENTICATION:=}"
 
 # 日志函数
 log_info() {
@@ -681,53 +692,65 @@ perform_subscription_update() {
     log_info "🔗 开始更新订阅..."
     
     # 定时更新时使用本地代理
-    if download_subscription "${SUB_URL}" "${CONFIG_FILE}" "true"; then
-        # 更新 secret
-        if [ -n "${SECRET}" ]; then
-            update_secret "${CONFIG_FILE}" "${SECRET}"
-        fi
-
-        # 更新 allow-lan
-        if [ -n "${ALLOW_LAN}" ]; then
-            update_allow_lan "${CONFIG_FILE}" "${ALLOW_LAN}"
-        fi
-
-        # 更新 authentication
-        if [ -n "${AUTHENTICATION}" ]; then
-            update_authentication "${CONFIG_FILE}" "${AUTHENTICATION}"
-        fi
-
-        # 确保统一延迟和并发连接
-        ensure_unified_delay_and_tcp_concurrent "${CONFIG_FILE}"
-
-        # 注入 tun 配置
-        inject_tun "${CONFIG_FILE}" "${TUN_ENABLED}"
-        inject_dns "${CONFIG_FILE}" "${DNS_OVERRIDE}"
-
-        # 确保 external-controller 配置正确
-        ensure_external_controller "${CONFIG_FILE}"
-
-        # ========== 新增：执行外部 Hook ==========
-        if ! run_post_subscription_hooks "${CONFIG_FILE}"; then
-            log_error "❌ 执行外部Hook失败"
-            restore_config_backup "${config_backup}"
-            return 1
-        fi
-        # ========================================
-
-        if ! update_mode "${CONFIG_FILE}" "${MODE}"; then
-            return 1
-        fi
-
-        # 重启 mihomo
-        restart_mihomo
-        log_info "🎉 订阅更新完成"
-        return 0
-    else
-        rm -f "${config_backup}"
+    if ! download_subscription "${SUB_URL}" "${CONFIG_FILE}" "true"; then
+        restore_config_backup "${config_backup}" || true
         log_error "❌ 订阅更新失败，保持当前配置"
         return 1
     fi
+
+    # 所有配置变更都在同一份备份保护下进行，任一步失败都恢复旧配置。
+    if ! update_secret "${CONFIG_FILE}" "${controller_secret}"; then
+        restore_config_backup "${config_backup}" || true
+        return 1
+    fi
+
+    if [ -n "${ALLOW_LAN}" ] && ! update_allow_lan "${CONFIG_FILE}" "${ALLOW_LAN}"; then
+        restore_config_backup "${config_backup}" || true
+        return 1
+    fi
+
+    if [ -n "${AUTHENTICATION}" ] && ! update_authentication "${CONFIG_FILE}" "${AUTHENTICATION}"; then
+        restore_config_backup "${config_backup}" || true
+        return 1
+    fi
+
+    if ! ensure_unified_delay_and_tcp_concurrent "${CONFIG_FILE}" || \
+        ! inject_tun "${CONFIG_FILE}" "${TUN_ENABLED}" || \
+        ! inject_dns "${CONFIG_FILE}" "${DNS_OVERRIDE}" || \
+        ! ensure_external_controller "${CONFIG_FILE}"; then
+        restore_config_backup "${config_backup}" || true
+        return 1
+    fi
+
+    # ========== 新增：执行外部 Hook ==========
+    if ! run_post_subscription_hooks "${CONFIG_FILE}"; then
+        log_error "❌ 执行外部Hook失败"
+        restore_config_backup "${config_backup}" || true
+        return 1
+    fi
+    # ========================================
+
+    if ! update_mode "${CONFIG_FILE}" "${MODE}"; then
+        restore_config_backup "${config_backup}" || true
+        return 1
+    fi
+
+    # 保持热加载通道在更新前后使用相同的地址和密钥。
+    if ! update_secret "${CONFIG_FILE}" "${controller_secret}" || \
+        ! ensure_external_controller "${CONFIG_FILE}"; then
+        restore_config_backup "${config_backup}" || true
+        return 1
+    fi
+
+    # 热加载配置，避免终止主进程导致容器重启。
+    if ! reload_mihomo_config "${controller_secret}"; then
+        restore_and_reload_config "${config_backup}" "${controller_secret}" || true
+        return 1
+    fi
+
+    rm -f "${config_backup}"
+    log_info "🎉 订阅更新完成"
+    return 0
 }
 
 # 更新订阅（用于定时任务，通过本地代理下载）
@@ -739,8 +762,12 @@ update_subscription() {
         return 1
     fi
 
-    perform_subscription_update
-    local status=$?
+    local status
+    if perform_subscription_update; then
+        status=0
+    else
+        status=$?
+    fi
     exec 9>&-
     return "${status}"
 }
