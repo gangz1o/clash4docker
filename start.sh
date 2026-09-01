@@ -491,7 +491,7 @@ update_mode() {
         log_error "❌ 无法创建临时文件"
         return 1
     fi
-    if ! cp -p "${config}" "${temp_file}" || ! awk -v mode="${mode}" '
+    if ! cp -p "${config}" "${temp_file}" || ! LC_ALL=C awk -v mode="${mode}" '
         function is_mode(line) {
             return line ~ /^mode[[:space:]]*:/ || line ~ /^"mode"[[:space:]]*:/ || line ~ /^\047mode\047[[:space:]]*:/
         }
