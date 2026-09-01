@@ -131,10 +131,14 @@ download_subscription() {
             # 验证下载的文件完整性
             if validate_config "${temp_file}"; then
                 # 使用 cp 而不是 mv，避免跨文件系统问题和文件占用问题
-                cp -f "${temp_file}" "${output}"
+                if cp -f "${temp_file}" "${output}"; then
+                    rm -f "${temp_file}"
+                    log_info "✅ 订阅配置下载成功"
+                    return 0
+                fi
+                log_warn "❌ 配置文件写入失败，${retry_delay} 秒后重试..."
                 rm -f "${temp_file}"
-                log_info "✅ 订阅配置下载成功"
-                return 0
+                sleep "${retry_delay}"
             else
                 log_error "❌ 下载的配置文件验证失败"
                 rm -f "${temp_file}"
@@ -218,18 +222,22 @@ update_authentication() {
             log_error "❌ 无法创建临时文件"
             return 1
         fi
-        awk '/^authentication:/{skip=1; next} skip && /^[a-zA-Z]/{skip=0} !skip{print}' "${config}" > "${temp_file}"
-        cp -f "${temp_file}" "${config}"
+        if ! awk '/^authentication:/{skip=1; next} skip && /^[a-zA-Z]/{skip=0} !skip{print}' "${config}" > "${temp_file}" || \
+            ! cp -f "${temp_file}" "${config}"; then
+            log_error "❌ authentication 配置写入失败"
+            rm -f "${temp_file}"
+            return 1
+        fi
         rm -f "${temp_file}"
     fi
 
     # 添加 authentication 配置
     if grep -qE "^secret:" "${config}"; then
-        sed_inplace "/^secret:/a authentication:\n  - '${auth}'" "${config}"
+        sed_inplace "/^secret:/a authentication:\n  - '${auth}'" "${config}" || return 1
     elif grep -qE "^external-controller:" "${config}"; then
-        sed_inplace "/^external-controller:/a authentication:\n  - '${auth}'" "${config}"
+        sed_inplace "/^external-controller:/a authentication:\n  - '${auth}'" "${config}" || return 1
     else
-        sed_inplace "1i authentication:\n  - '${auth}'" "${config}"
+        sed_inplace "1i authentication:\n  - '${auth}'" "${config}" || return 1
     fi
 
     log_info "✅ authentication 已更新"
@@ -256,34 +264,34 @@ ensure_unified_delay_and_tcp_concurrent() {
     # 处理 unified-delay
     if grep -qE "^[[:space:]]*unified-delay:" "${config}"; then
         if [ "${force_override}" = "true" ]; then
-            force_boolean_key_true_preserve_comment "${config}" "unified-delay"
+            force_boolean_key_true_preserve_comment "${config}" "unified-delay" || return 1
         fi
     else
         # 尝试在 secret 后面添加（如果存在 secret）
         if grep -qE "^[[:space:]]*secret:" "${config}"; then
-            sed_inplace "/^[[:space:]]*secret:/a unified-delay: true" "${config}"
+            sed_inplace "/^[[:space:]]*secret:/a unified-delay: true" "${config}" || return 1
         elif grep -qE "^[[:space:]]*external-controller:" "${config}"; then
-            sed_inplace "/^[[:space:]]*external-controller:/a unified-delay: true" "${config}"
+            sed_inplace "/^[[:space:]]*external-controller:/a unified-delay: true" "${config}" || return 1
         else
-            sed_inplace "1i unified-delay: true" "${config}"
+            sed_inplace "1i unified-delay: true" "${config}" || return 1
         fi
     fi
     
     # 处理 tcp-concurrent
     if grep -qE "^[[:space:]]*tcp-concurrent:" "${config}"; then
         if [ "${force_override}" = "true" ]; then
-            force_boolean_key_true_preserve_comment "${config}" "tcp-concurrent"
+            force_boolean_key_true_preserve_comment "${config}" "tcp-concurrent" || return 1
         fi
     else
         # 尝试在 unified-delay 后面添加
         if grep -qE "^[[:space:]]*unified-delay:" "${config}"; then
-            sed_inplace "/^[[:space:]]*unified-delay:/a tcp-concurrent: true" "${config}"
+            sed_inplace "/^[[:space:]]*unified-delay:/a tcp-concurrent: true" "${config}" || return 1
         elif grep -qE "^[[:space:]]*secret:" "${config}"; then
-            sed_inplace "/^[[:space:]]*secret:/a tcp-concurrent: true" "${config}"
+            sed_inplace "/^[[:space:]]*secret:/a tcp-concurrent: true" "${config}" || return 1
         elif grep -qE "^[[:space:]]*external-controller:" "${config}"; then
-            sed_inplace "/^[[:space:]]*external-controller:/a tcp-concurrent: true" "${config}"
+            sed_inplace "/^[[:space:]]*external-controller:/a tcp-concurrent: true" "${config}" || return 1
         else
-            sed_inplace "1i tcp-concurrent: true" "${config}"
+            sed_inplace "1i tcp-concurrent: true" "${config}" || return 1
         fi
     fi
     
@@ -313,12 +321,16 @@ inject_tun() {
         log_error "❌ 无法创建临时文件"
         return 1
     fi
-    awk '/^tun:/{skip=1; next} skip && /^[a-zA-Z]/{skip=0} !skip{print}' "${config}" > "${temp_file}"
-    cp -f "${temp_file}" "${config}"
+    if ! awk '/^tun:/{skip=1; next} skip && /^[a-zA-Z]/{skip=0} !skip{print}' "${config}" > "${temp_file}" || \
+        ! cp -f "${temp_file}" "${config}"; then
+        log_error "❌ tun 配置写入失败"
+        rm -f "${temp_file}"
+        return 1
+    fi
     rm -f "${temp_file}"
 
     if [ "${tun_enabled}" = "true" ]; then
-        cat >> "${config}" << 'EOF'
+        if ! cat >> "${config}" << 'EOF'
 tun:
   enable: true
   stack: mixed
@@ -326,12 +338,20 @@ tun:
   auto-redirect: true
   auto-detect-interface: true
 EOF
+        then
+            log_error "❌ tun 配置写入失败"
+            return 1
+        fi
         log_info "✅ tun 模式已启用"
     else
-        cat >> "${config}" << 'EOF'
+        if ! cat >> "${config}" << 'EOF'
 tun:
   enable: false
 EOF
+        then
+            log_error "❌ tun 配置写入失败"
+            return 1
+        fi
         log_info "✅ tun 模式已显式关闭"
     fi
     }
@@ -346,9 +366,17 @@ EOF
     log_info "🔗 正在覆写配置文件中的 DNS 配置..."
 
     # 移除现有的 dns 配置块
-    local temp_file=$(mktemp)
-    awk '/^dns:/{skip=1; next} skip && /^[a-zA-Z]/{skip=0} !skip{print}' "${config}" > "${temp_file}"
-    cp -f "${temp_file}" "${config}"
+    local temp_file
+    if ! temp_file=$(mktemp); then
+        log_error "❌ 无法创建临时文件"
+        return 1
+    fi
+    if ! awk '/^dns:/{skip=1; next} skip && /^[a-zA-Z]/{skip=0} !skip{print}' "${config}" > "${temp_file}" || \
+        ! cp -f "${temp_file}" "${config}"; then
+        log_error "❌ DNS 配置写入失败"
+        rm -f "${temp_file}"
+        return 1
+    fi
     rm -f "${temp_file}"
 
 # 精简版
@@ -367,7 +395,7 @@ EOF
 #     - https://dns.alidns.com/dns-query
 #     - https://doh.pub/dns-query
 
-    cat >> "${config}" << 'EOF'
+    if ! cat >> "${config}" << 'EOF'
 dns:
   enable: true
   listen: "0.0.0.0:1053"
@@ -408,6 +436,10 @@ dns:
       - "+.facebook.com"
       - "+.youtube.com"
 EOF
+    then
+        log_error "❌ DNS 配置写入失败"
+        return 1
+    fi
     log_info "✅ DNS 配置已覆写"
     }
 
@@ -426,10 +458,10 @@ update_allow_lan() {
     # 检查配置文件中是否已有 allow-lan 字段
     if grep -qE "^allow-lan:" "${config}"; then
         # 替换现有的 allow-lan
-        sed_inplace "s/^allow-lan:.*$/allow-lan: ${allow_lan}/" "${config}"
+        sed_inplace "s/^allow-lan:.*$/allow-lan: ${allow_lan}/" "${config}" || return 1
     else
         # 在文件开头添加
-        sed_inplace "1i allow-lan: ${allow_lan}" "${config}"
+        sed_inplace "1i allow-lan: ${allow_lan}" "${config}" || return 1
     fi
 
     log_info "✅ allow-lan 已更新为 ${allow_lan}"

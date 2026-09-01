@@ -93,9 +93,13 @@ cleanup() {
         echo "测试未执行到完成哨兵，不应报告成功" >&2
         status=1
     fi
-    return "${status}"
+    trap - EXIT
+    exit "${status}"
 }
 trap cleanup EXIT
+if [ "${TEST_RELOAD_SENTINEL_PROBE:-false}" = "true" ]; then
+    exit 0
+fi
 CONFIG_FILE="${TEST_DIR}/config.yaml"
 UPDATE_LOCK_FILE="${TEST_DIR}/update.lock"
 FLOCK_STATUS=0
@@ -113,6 +117,7 @@ routing-mark: 2
 proxies: []"
 DOWNLOAD_CALLS=0
 DOWNLOAD_STATUS=0
+ORIGINAL_DOWNLOAD_SUBSCRIPTION=$(declare -f download_subscription)
 download_subscription() {
     DOWNLOAD_CALLS=$((DOWNLOAD_CALLS + 1))
     if [ "${DOWNLOAD_STATUS}" -ne 0 ]; then
@@ -120,6 +125,11 @@ download_subscription() {
     fi
     printf '%s\n' "${DOWNLOAD_CONTENT}" > "${CONFIG_FILE}"
 }
+ORIGINAL_UPDATE_ALLOW_LAN=$(declare -f update_allow_lan)
+ORIGINAL_UPDATE_AUTHENTICATION=$(declare -f update_authentication)
+ORIGINAL_ENSURE_CONCURRENCY=$(declare -f ensure_unified_delay_and_tcp_concurrent)
+ORIGINAL_INJECT_TUN=$(declare -f inject_tun)
+ORIGINAL_INJECT_DNS=$(declare -f inject_dns)
 update_allow_lan() { return 0; }
 update_authentication() { return 0; }
 ensure_unified_delay_and_tcp_concurrent() { return 0; }
@@ -226,6 +236,60 @@ fi
 grep -q "routing-mark: 1" "${CONFIG_FILE}"
 eval "${ORIGINAL_SED_INPLACE}"
 
+(
+    eval "${ORIGINAL_UPDATE_ALLOW_LAN}"
+    eval "${ORIGINAL_UPDATE_AUTHENTICATION}"
+    eval "${ORIGINAL_ENSURE_CONCURRENCY}"
+    sed_inplace() { return 1; }
+    if update_allow_lan "${CONFIG_FILE}" "true"; then
+        echo "allow-lan 写入失败时 helper 不应返回成功" >&2
+        exit 1
+    fi
+    if update_authentication "${CONFIG_FILE}" "user:password"; then
+        echo "authentication 写入失败时 helper 不应返回成功" >&2
+        exit 1
+    fi
+    if ensure_unified_delay_and_tcp_concurrent "${CONFIG_FILE}"; then
+        echo "并发配置写入失败时 helper 不应返回成功" >&2
+        exit 1
+    fi
+)
+
+(
+    eval "${ORIGINAL_INJECT_TUN}"
+    eval "${ORIGINAL_INJECT_DNS}"
+    cp() { return 1; }
+    if inject_tun "${CONFIG_FILE}" "true"; then
+        echo "tun 配置复制失败时 helper 不应返回成功" >&2
+        exit 1
+    fi
+    if inject_dns "${CONFIG_FILE}" "true"; then
+        echo "DNS 配置复制失败时 helper 不应返回成功" >&2
+        exit 1
+    fi
+)
+
+(
+    eval "${ORIGINAL_DOWNLOAD_SUBSCRIPTION}"
+    validate_config() { return 0; }
+    curl() {
+        local output=""
+        while [ "$#" -gt 0 ]; do
+            if [ "$1" = "-o" ]; then
+                output="$2"
+                break
+            fi
+            shift
+        done
+        printf 'proxies: []\n' > "${output}"
+    }
+    cp() { return 1; }
+    if download_subscription "https://example.com/subscription" "${CONFIG_FILE}" "false"; then
+        echo "目标配置写入失败时下载不应返回成功" >&2
+        exit 1
+    fi
+)
+
 cp "${CONFIG_FILE}" "${TEST_DIR}/before-controller-failure.yaml"
 DOWNLOAD_CALLS_BEFORE=${DOWNLOAD_CALLS}
 CONTROLLER_CHECK_STATUS=1
@@ -329,6 +393,11 @@ if { : >&9; } 2>/dev/null; then
     exit 1
 fi
 eval "${ORIGINAL_PERFORM_SUBSCRIPTION_UPDATE}"
+
+if TEST_RELOAD_SENTINEL_PROBE=true bash "${BASH_SOURCE[0]}" >/dev/null 2>&1; then
+    echo "未完成测试哨兵必须让脚本返回非零" >&2
+    exit 1
+fi
 
 TEST_COMPLETED=true
 echo "配置热加载测试通过"
