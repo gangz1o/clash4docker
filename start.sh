@@ -15,17 +15,6 @@ BLUE="\033[34m"
 CYAN="\033[36m"
 RESET="\033[0m"
 
-# 可选环境变量在严格模式或被 source 引入时统一使用空值默认值
-: "${SUB_URL:=}"
-: "${SECRET:=}"
-: "${SUB_CRON:=}"
-: "${DOWNLOAD_PROXY:=}"
-: "${ALLOW_LAN:=}"
-: "${MODE:=}"
-: "${TUN_ENABLED:=}"
-: "${DNS_OVERRIDE:=}"
-: "${SUB_USER_AGENT:=}"
-: "${AUTHENTICATION:=}"
 
 # 日志函数
 log_info() {
@@ -131,14 +120,10 @@ download_subscription() {
             # 验证下载的文件完整性
             if validate_config "${temp_file}"; then
                 # 使用 cp 而不是 mv，避免跨文件系统问题和文件占用问题
-                if cp -f "${temp_file}" "${output}"; then
-                    rm -f "${temp_file}"
-                    log_info "✅ 订阅配置下载成功"
-                    return 0
-                fi
-                log_warn "❌ 配置文件写入失败，${retry_delay} 秒后重试..."
+                cp -f "${temp_file}" "${output}"
                 rm -f "${temp_file}"
-                sleep "${retry_delay}"
+                log_info "✅ 订阅配置下载成功"
+                return 0
             else
                 log_error "❌ 下载的配置文件验证失败"
                 rm -f "${temp_file}"
@@ -222,22 +207,18 @@ update_authentication() {
             log_error "❌ 无法创建临时文件"
             return 1
         fi
-        if ! awk '/^authentication:/{skip=1; next} skip && /^[a-zA-Z]/{skip=0} !skip{print}' "${config}" > "${temp_file}" || \
-            ! cp -f "${temp_file}" "${config}"; then
-            log_error "❌ authentication 配置写入失败"
-            rm -f "${temp_file}"
-            return 1
-        fi
+        awk '/^authentication:/{skip=1; next} skip && /^[a-zA-Z]/{skip=0} !skip{print}' "${config}" > "${temp_file}"
+        cp -f "${temp_file}" "${config}"
         rm -f "${temp_file}"
     fi
 
     # 添加 authentication 配置
     if grep -qE "^secret:" "${config}"; then
-        sed_inplace "/^secret:/a authentication:\n  - '${auth}'" "${config}" || return 1
+        sed_inplace "/^secret:/a authentication:\n  - '${auth}'" "${config}"
     elif grep -qE "^external-controller:" "${config}"; then
-        sed_inplace "/^external-controller:/a authentication:\n  - '${auth}'" "${config}" || return 1
+        sed_inplace "/^external-controller:/a authentication:\n  - '${auth}'" "${config}"
     else
-        sed_inplace "1i authentication:\n  - '${auth}'" "${config}" || return 1
+        sed_inplace "1i authentication:\n  - '${auth}'" "${config}"
     fi
 
     log_info "✅ authentication 已更新"
@@ -264,34 +245,34 @@ ensure_unified_delay_and_tcp_concurrent() {
     # 处理 unified-delay
     if grep -qE "^[[:space:]]*unified-delay:" "${config}"; then
         if [ "${force_override}" = "true" ]; then
-            force_boolean_key_true_preserve_comment "${config}" "unified-delay" || return 1
+            force_boolean_key_true_preserve_comment "${config}" "unified-delay"
         fi
     else
         # 尝试在 secret 后面添加（如果存在 secret）
         if grep -qE "^[[:space:]]*secret:" "${config}"; then
-            sed_inplace "/^[[:space:]]*secret:/a unified-delay: true" "${config}" || return 1
+            sed_inplace "/^[[:space:]]*secret:/a unified-delay: true" "${config}"
         elif grep -qE "^[[:space:]]*external-controller:" "${config}"; then
-            sed_inplace "/^[[:space:]]*external-controller:/a unified-delay: true" "${config}" || return 1
+            sed_inplace "/^[[:space:]]*external-controller:/a unified-delay: true" "${config}"
         else
-            sed_inplace "1i unified-delay: true" "${config}" || return 1
+            sed_inplace "1i unified-delay: true" "${config}"
         fi
     fi
     
     # 处理 tcp-concurrent
     if grep -qE "^[[:space:]]*tcp-concurrent:" "${config}"; then
         if [ "${force_override}" = "true" ]; then
-            force_boolean_key_true_preserve_comment "${config}" "tcp-concurrent" || return 1
+            force_boolean_key_true_preserve_comment "${config}" "tcp-concurrent"
         fi
     else
         # 尝试在 unified-delay 后面添加
         if grep -qE "^[[:space:]]*unified-delay:" "${config}"; then
-            sed_inplace "/^[[:space:]]*unified-delay:/a tcp-concurrent: true" "${config}" || return 1
+            sed_inplace "/^[[:space:]]*unified-delay:/a tcp-concurrent: true" "${config}"
         elif grep -qE "^[[:space:]]*secret:" "${config}"; then
-            sed_inplace "/^[[:space:]]*secret:/a tcp-concurrent: true" "${config}" || return 1
+            sed_inplace "/^[[:space:]]*secret:/a tcp-concurrent: true" "${config}"
         elif grep -qE "^[[:space:]]*external-controller:" "${config}"; then
-            sed_inplace "/^[[:space:]]*external-controller:/a tcp-concurrent: true" "${config}" || return 1
+            sed_inplace "/^[[:space:]]*external-controller:/a tcp-concurrent: true" "${config}"
         else
-            sed_inplace "1i tcp-concurrent: true" "${config}" || return 1
+            sed_inplace "1i tcp-concurrent: true" "${config}"
         fi
     fi
     
@@ -321,16 +302,12 @@ inject_tun() {
         log_error "❌ 无法创建临时文件"
         return 1
     fi
-    if ! awk '/^tun:/{skip=1; next} skip && /^[a-zA-Z]/{skip=0} !skip{print}' "${config}" > "${temp_file}" || \
-        ! cp -f "${temp_file}" "${config}"; then
-        log_error "❌ tun 配置写入失败"
-        rm -f "${temp_file}"
-        return 1
-    fi
+    awk '/^tun:/{skip=1; next} skip && /^[a-zA-Z]/{skip=0} !skip{print}' "${config}" > "${temp_file}"
+    cp -f "${temp_file}" "${config}"
     rm -f "${temp_file}"
 
     if [ "${tun_enabled}" = "true" ]; then
-        if ! cat >> "${config}" << 'EOF'
+        cat >> "${config}" << 'EOF'
 tun:
   enable: true
   stack: mixed
@@ -338,20 +315,12 @@ tun:
   auto-redirect: true
   auto-detect-interface: true
 EOF
-        then
-            log_error "❌ tun 配置写入失败"
-            return 1
-        fi
         log_info "✅ tun 模式已启用"
     else
-        if ! cat >> "${config}" << 'EOF'
+        cat >> "${config}" << 'EOF'
 tun:
   enable: false
 EOF
-        then
-            log_error "❌ tun 配置写入失败"
-            return 1
-        fi
         log_info "✅ tun 模式已显式关闭"
     fi
     }
@@ -366,17 +335,9 @@ EOF
     log_info "🔗 正在覆写配置文件中的 DNS 配置..."
 
     # 移除现有的 dns 配置块
-    local temp_file
-    if ! temp_file=$(mktemp); then
-        log_error "❌ 无法创建临时文件"
-        return 1
-    fi
-    if ! awk '/^dns:/{skip=1; next} skip && /^[a-zA-Z]/{skip=0} !skip{print}' "${config}" > "${temp_file}" || \
-        ! cp -f "${temp_file}" "${config}"; then
-        log_error "❌ DNS 配置写入失败"
-        rm -f "${temp_file}"
-        return 1
-    fi
+    local temp_file=$(mktemp)
+    awk '/^dns:/{skip=1; next} skip && /^[a-zA-Z]/{skip=0} !skip{print}' "${config}" > "${temp_file}"
+    cp -f "${temp_file}" "${config}"
     rm -f "${temp_file}"
 
 # 精简版
@@ -395,7 +356,7 @@ EOF
 #     - https://dns.alidns.com/dns-query
 #     - https://doh.pub/dns-query
 
-    if ! cat >> "${config}" << 'EOF'
+    cat >> "${config}" << 'EOF'
 dns:
   enable: true
   listen: "0.0.0.0:1053"
@@ -436,10 +397,6 @@ dns:
       - "+.facebook.com"
       - "+.youtube.com"
 EOF
-    then
-        log_error "❌ DNS 配置写入失败"
-        return 1
-    fi
     log_info "✅ DNS 配置已覆写"
     }
 
@@ -458,10 +415,10 @@ update_allow_lan() {
     # 检查配置文件中是否已有 allow-lan 字段
     if grep -qE "^allow-lan:" "${config}"; then
         # 替换现有的 allow-lan
-        sed_inplace "s/^allow-lan:.*$/allow-lan: ${allow_lan}/" "${config}" || return 1
+        sed_inplace "s/^allow-lan:.*$/allow-lan: ${allow_lan}/" "${config}"
     else
         # 在文件开头添加
-        sed_inplace "1i allow-lan: ${allow_lan}" "${config}" || return 1
+        sed_inplace "1i allow-lan: ${allow_lan}" "${config}"
     fi
 
     log_info "✅ allow-lan 已更新为 ${allow_lan}"
@@ -724,65 +681,53 @@ perform_subscription_update() {
     log_info "🔗 开始更新订阅..."
     
     # 定时更新时使用本地代理
-    if ! download_subscription "${SUB_URL}" "${CONFIG_FILE}" "true"; then
-        restore_config_backup "${config_backup}" || true
+    if download_subscription "${SUB_URL}" "${CONFIG_FILE}" "true"; then
+        # 更新 secret
+        if [ -n "${SECRET}" ]; then
+            update_secret "${CONFIG_FILE}" "${SECRET}"
+        fi
+
+        # 更新 allow-lan
+        if [ -n "${ALLOW_LAN}" ]; then
+            update_allow_lan "${CONFIG_FILE}" "${ALLOW_LAN}"
+        fi
+
+        # 更新 authentication
+        if [ -n "${AUTHENTICATION}" ]; then
+            update_authentication "${CONFIG_FILE}" "${AUTHENTICATION}"
+        fi
+
+        # 确保统一延迟和并发连接
+        ensure_unified_delay_and_tcp_concurrent "${CONFIG_FILE}"
+
+        # 注入 tun 配置
+        inject_tun "${CONFIG_FILE}" "${TUN_ENABLED}"
+        inject_dns "${CONFIG_FILE}" "${DNS_OVERRIDE}"
+
+        # 确保 external-controller 配置正确
+        ensure_external_controller "${CONFIG_FILE}"
+
+        # ========== 新增：执行外部 Hook ==========
+        if ! run_post_subscription_hooks "${CONFIG_FILE}"; then
+            log_error "❌ 执行外部Hook失败"
+            restore_config_backup "${config_backup}"
+            return 1
+        fi
+        # ========================================
+
+        if ! update_mode "${CONFIG_FILE}" "${MODE}"; then
+            return 1
+        fi
+
+        # 重启 mihomo
+        restart_mihomo
+        log_info "🎉 订阅更新完成"
+        return 0
+    else
+        rm -f "${config_backup}"
         log_error "❌ 订阅更新失败，保持当前配置"
         return 1
     fi
-
-    # 所有配置变更都在同一份备份保护下进行，任一步失败都恢复旧配置。
-    if ! update_secret "${CONFIG_FILE}" "${controller_secret}"; then
-        restore_config_backup "${config_backup}" || true
-        return 1
-    fi
-
-    if [ -n "${ALLOW_LAN}" ] && ! update_allow_lan "${CONFIG_FILE}" "${ALLOW_LAN}"; then
-        restore_config_backup "${config_backup}" || true
-        return 1
-    fi
-
-    if [ -n "${AUTHENTICATION}" ] && ! update_authentication "${CONFIG_FILE}" "${AUTHENTICATION}"; then
-        restore_config_backup "${config_backup}" || true
-        return 1
-    fi
-
-    if ! ensure_unified_delay_and_tcp_concurrent "${CONFIG_FILE}" || \
-        ! inject_tun "${CONFIG_FILE}" "${TUN_ENABLED}" || \
-        ! inject_dns "${CONFIG_FILE}" "${DNS_OVERRIDE}" || \
-        ! ensure_external_controller "${CONFIG_FILE}"; then
-        restore_config_backup "${config_backup}" || true
-        return 1
-    fi
-
-    # ========== 新增：执行外部 Hook ==========
-    if ! run_post_subscription_hooks "${CONFIG_FILE}"; then
-        log_error "❌ 执行外部Hook失败"
-        restore_config_backup "${config_backup}" || true
-        return 1
-    fi
-    # ========================================
-
-    if ! update_mode "${CONFIG_FILE}" "${MODE}"; then
-        restore_config_backup "${config_backup}" || true
-        return 1
-    fi
-
-    # 保持热加载通道在更新前后使用相同的地址和密钥。
-    if ! update_secret "${CONFIG_FILE}" "${controller_secret}" || \
-        ! ensure_external_controller "${CONFIG_FILE}"; then
-        restore_config_backup "${config_backup}" || true
-        return 1
-    fi
-
-    # 热加载配置，避免终止主进程导致容器重启。
-    if ! reload_mihomo_config "${controller_secret}"; then
-        restore_and_reload_config "${config_backup}" "${controller_secret}" || true
-        return 1
-    fi
-
-    rm -f "${config_backup}"
-    log_info "🎉 订阅更新完成"
-    return 0
 }
 
 # 更新订阅（用于定时任务，通过本地代理下载）
@@ -794,12 +739,8 @@ update_subscription() {
         return 1
     fi
 
-    local status
-    if perform_subscription_update; then
-        status=0
-    else
-        status=$?
-    fi
+    perform_subscription_update
+    local status=$?
     exec 9>&-
     return "${status}"
 }

@@ -1,8 +1,0 @@
-mixed-port: 7892
-mode: direct
-log-level: warning
-allow-lan: false
-external-controller: 0.0.0.0:9090
-proxies: []
-rules:
-  - MATCH,DIRECT
