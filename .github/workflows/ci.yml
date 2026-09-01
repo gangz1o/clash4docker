@@ -60,7 +60,11 @@ jobs:
           persist-credentials: false
 
       - name: Check shell syntax
-        run: bash -n start.sh tests/test_mode.sh tests/test_reload.sh tests/test_container.sh
+        run: |
+          set -euo pipefail
+          for script in start.sh tests/test_mode.sh tests/test_reload.sh tests/test_container.sh; do
+            bash -n "$script"
+          done
 
       - name: Run mode tests
         run: bash tests/test_mode.sh
