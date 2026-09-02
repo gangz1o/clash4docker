@@ -589,7 +589,8 @@ ensure_external_controller() {
 # 返回: 0=成功, 1=失败
 start_mihomo() {
     log_info "🚀 正在启动 mihomo..."
-    /app/mihomo -d "${CONFIG_DIR}" -ext-ui "${UI_DIR}" &
+    SAFE_PATHS="${SAFE_PATHS:+${SAFE_PATHS}:}${UI_DIR}" \
+        /app/mihomo -d "${CONFIG_DIR}" -ext-ui "${UI_DIR}" &
     local pid=$!
     echo "${pid}" > "${PID_FILE}"
     
