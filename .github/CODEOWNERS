@@ -1,0 +1,3 @@
+# CI workflow changes require review from the repository owner.
+/.github/workflows/** @gangz1o
+/.github/CODEOWNERS @gangz1o
