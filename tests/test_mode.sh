@@ -65,7 +65,7 @@ cmp "${TEST_DIR}/before.yaml" "${CONFIG_FILE}"
 update_mode "${CONFIG_FILE}" "invalid"
 cmp "${TEST_DIR}/before.yaml" "${CONFIG_FILE}"
 
-mv() {
+replace_file() {
     return 1
 }
 
@@ -74,7 +74,5 @@ if update_mode "${CONFIG_FILE}" "rule"; then
     exit 1
 fi
 cmp "${TEST_DIR}/before.yaml" "${CONFIG_FILE}"
-
-grep -q '^MODE=${MODE}$' "${REPO_DIR}/start.sh"
 
 echo "MODE 测试通过"

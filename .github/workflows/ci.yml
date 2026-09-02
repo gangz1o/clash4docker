@@ -62,7 +62,7 @@ jobs:
       - name: Check shell syntax
         run: |
           set -euo pipefail
-          for script in start.sh tests/test_mode.sh tests/test_reload.sh tests/test_container.sh; do
+          for script in start.sh lib/glash/*.sh tests/*.sh; do
             bash -n "$script"
           done
 
@@ -71,6 +71,9 @@ jobs:
 
       - name: Run reload tests
         run: bash tests/test_reload.sh
+
+      - name: Run module regression tests
+        run: bash tests/test_modules.sh
 
   smoke:
     name: AMD64 runtime smoke

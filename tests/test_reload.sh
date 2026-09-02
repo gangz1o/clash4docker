@@ -123,7 +123,7 @@ download_subscription() {
     if [ "${DOWNLOAD_STATUS}" -ne 0 ]; then
         return "${DOWNLOAD_STATUS}"
     fi
-    printf '%s\n' "${DOWNLOAD_CONTENT}" > "${CONFIG_FILE}"
+    printf '%s\n' "${DOWNLOAD_CONTENT}" > "$2"
 }
 ORIGINAL_UPDATE_ALLOW_LAN=$(declare -f update_allow_lan)
 ORIGINAL_UPDATE_AUTHENTICATION=$(declare -f update_authentication)
@@ -218,7 +218,7 @@ update_subscription
 grep -q "^secret: ''$" "${CONFIG_FILE}"
 [ "${RESTART_CALLED}" = "false" ]
 
-ORIGINAL_SED_INPLACE=$(declare -f sed_inplace)
+ORIGINAL_REPLACE_TOP_LEVEL_SCALAR=$(declare -f replace_top_level_scalar)
 cat > "${CONFIG_FILE}" <<'EOF'
 secret: 'controller-secret'
 mixed-port: 7890
@@ -227,28 +227,37 @@ proxies: []
 EOF
 SECRET="controller-secret"
 RELOAD_CALLS=0
-sed_inplace() { return 1; }
+replace_top_level_scalar() { return 1; }
 if update_subscription; then
     echo "控制通道写入失败时 update_subscription 不应返回成功" >&2
     exit 1
 fi
 [ "${RELOAD_CALLS}" -eq 0 ]
 grep -q "routing-mark: 1" "${CONFIG_FILE}"
-eval "${ORIGINAL_SED_INPLACE}"
+eval "${ORIGINAL_REPLACE_TOP_LEVEL_SCALAR}"
 
 (
     eval "${ORIGINAL_UPDATE_ALLOW_LAN}"
-    eval "${ORIGINAL_UPDATE_AUTHENTICATION}"
-    eval "${ORIGINAL_ENSURE_CONCURRENCY}"
-    sed_inplace() { return 1; }
+    replace_top_level_scalar() { return 1; }
     if update_allow_lan "${CONFIG_FILE}" "true"; then
         echo "allow-lan 写入失败时 helper 不应返回成功" >&2
         exit 1
     fi
+)
+
+(
+    eval "${ORIGINAL_UPDATE_AUTHENTICATION}"
+    remove_top_level_block() { return 1; }
     if update_authentication "${CONFIG_FILE}" "user:password"; then
         echo "authentication 写入失败时 helper 不应返回成功" >&2
         exit 1
     fi
+)
+
+(
+    eval "${ORIGINAL_ENSURE_CONCURRENCY}"
+    has_top_level_key() { return 1; }
+    replace_top_level_scalar() { return 1; }
     if ensure_unified_delay_and_tcp_concurrent "${CONFIG_FILE}"; then
         echo "并发配置写入失败时 helper 不应返回成功" >&2
         exit 1
