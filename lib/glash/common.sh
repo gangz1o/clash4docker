@@ -6,6 +6,7 @@ HOOK_DIR="${HOOK_DIR:-/app/hooks.d}"
 UI_DIR="${UI_DIR:-/app/ui}"
 GEODATA_DIR="${GEODATA_DIR:-/app/geodata}"
 CRON_FILE="${CRON_FILE:-/etc/crontabs/root}"
+UPDATE_SCRIPT='/app/update_sub.sh'
 PID_FILE="${PID_FILE:-/var/run/mihomo.pid}"
 UPDATE_LOCK_FILE="${UPDATE_LOCK_FILE:-/var/run/glash-subscription-update.lock}"
 MIHOMO_BIN="${MIHOMO_BIN:-/app/mihomo}"

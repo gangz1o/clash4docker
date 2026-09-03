@@ -4,10 +4,13 @@
 
 # ==================== 基础配置 ====================
 # HTTP 代理端口
+# 订阅模式下可通过 HTTP_PORT 环境变量固定此值。
 port: 7890
 # SOCKS5 代理端口
+# 订阅模式下可通过 SOCKS_PORT 环境变量固定此值。
 socks-port: 7891
 # 混合代理端口 (HTTP + SOCKS5)
+# 订阅模式下可通过 MIXED_PORT 环境变量固定此值。
 mixed-port: 7892
 # 允许局域网连接
 allow-lan: true
@@ -65,7 +68,7 @@ dns:
 #   enable: true
 #   stack: mixed          # 可选: system / gvisor / mixed
 #   auto-route: true
-#   auto-redirect: true
+#   auto-redirect: true      # NAS 报 netlink 错误时可设置 TUN_AUTO_REDIRECT=false
 #   auto-detect-interface: true
 
 # ==================== 代理节点 ====================

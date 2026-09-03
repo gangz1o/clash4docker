@@ -22,31 +22,37 @@ validate_cron_schedule() {
 }
 
 write_update_script() {
-    local target='/app/update_sub.sh'
     local name
 
-    printf '%s\n' '#!/bin/bash' 'set -u' > "${target}" || return 1
-    for name in SUB_URL SECRET ALLOW_LAN MODE TUN_ENABLED DNS_OVERRIDE SUB_USER_AGENT AUTHENTICATION DOWNLOAD_PROXY FORCE_UNIFIED_DELAY_AND_TCP_CONCURRENT; do
-        printf 'export %s=%q\n' "${name}" "${!name}" >> "${target}" || return 1
+    printf '%s\n' '#!/bin/bash' 'set -u' > "${UPDATE_SCRIPT}" || return 1
+    for name in SUB_URL SECRET ALLOW_LAN MODE TUN_ENABLED TUN_AUTO_REDIRECT DNS_OVERRIDE SUB_USER_AGENT AUTHENTICATION DOWNLOAD_PROXY HTTP_PORT SOCKS_PORT MIXED_PORT FORCE_UNIFIED_DELAY_AND_TCP_CONCURRENT SAFE_PATHS; do
+        printf 'export %s=%q\n' "${name}" "${!name}" >> "${UPDATE_SCRIPT}" || return 1
     done
-    printf '%s\n' 'source /app/start.sh' 'update_subscription' >> "${target}" || return 1
-    chmod 700 "${target}"
+    printf '%s\n' 'source /app/start.sh' 'update_subscription' >> "${UPDATE_SCRIPT}" || return 1
+    chmod 700 "${UPDATE_SCRIPT}"
 }
 
 setup_cron() {
     local cron_schedule="$1"
 
+    if [ -n "${SUB_URL}" ]; then
+        write_update_script || {
+            log_error "❌ 无法创建订阅更新脚本"
+            return 1
+        }
+        log_info "✅ 手动订阅更新命令已就绪: ${UPDATE_SCRIPT}"
+    fi
     if [ -z "${cron_schedule}" ]; then
         log_info "🔔 未设置 SUB_CRON，跳过定时任务配置"
         return 0
     fi
+    if [ -z "${SUB_URL}" ]; then
+        log_error "❌ 设置 SUB_CRON 时必须同时设置 SUB_URL"
+        return 1
+    fi
     validate_cron_schedule "${cron_schedule}" || return 1
     log_info "🔗 设置订阅更新定时任务: ${cron_schedule}"
-    write_update_script || {
-        log_error "❌ 无法创建订阅更新脚本"
-        return 1
-    }
-    printf '%s /app/update_sub.sh >> /var/log/subscription.log 2>&1\n' "${cron_schedule}" > "${CRON_FILE}" || {
+    printf '%s %s >> /var/log/subscription.log 2>&1\n' "${cron_schedule}" "${UPDATE_SCRIPT}" > "${CRON_FILE}" || {
         log_error "❌ 无法写入 cron 配置"
         return 1
     }

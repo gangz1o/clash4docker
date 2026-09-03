@@ -25,8 +25,12 @@ validate_config "${SMALL_CONFIG}"
     SECRET=''
     ALLOW_LAN=''
     AUTHENTICATION=''
+    HTTP_PORT=''
+    SOCKS_PORT=''
+    MIXED_PORT=''
     MODE=''
     TUN_ENABLED=''
+    TUN_AUTO_REDIRECT=''
     DNS_OVERRIDE=''
     printf '%s\n' 'mixed-port: 7890' 'proxies: []' > "${CONFIG_FILE}"
     cp "${CONFIG_FILE}" "${TEST_DIR}/local-untouched-before.yaml"
@@ -46,6 +50,66 @@ assert_file_contains "${CONFIG_FILE}" "  - 'alice:one'"
 assert_file_contains "${CONFIG_FILE}" "  - 'bob:two'"
 [ "$(grep -c '^authentication:' "${CONFIG_FILE}")" -eq 1 ]
 
+# 代理端口覆写必须补齐缺失字段、替换重复字段，并在本地配置预处理时生效。
+(
+    CONFIG_FILE="${TEST_DIR}/ports.yaml"
+    SECRET=''
+    ALLOW_LAN=''
+    AUTHENTICATION=''
+    HTTP_PORT=17890
+    SOCKS_PORT=17891
+    MIXED_PORT=17892
+    MODE=''
+    TUN_ENABLED=''
+    TUN_AUTO_REDIRECT=''
+    DNS_OVERRIDE=''
+    FORCE_UNIFIED_DELAY_AND_TCP_CONCURRENT=false
+    printf '%s\n' \
+        'port: 7890' \
+        'port: 8890' \
+        'socks-port: 7891' \
+        'proxies: []' > "${CONFIG_FILE}"
+    prepare_existing_config "${CONFIG_FILE}" false
+    assert_file_contains "${CONFIG_FILE}" 'port: 17890'
+    assert_file_contains "${CONFIG_FILE}" 'socks-port: 17891'
+    assert_file_contains "${CONFIG_FILE}" 'mixed-port: 17892'
+    [ "$(grep -c '^port:' "${CONFIG_FILE}")" -eq 1 ]
+)
+
+# 订阅候选配置必须应用同一组端口覆写，避免下次更新恢复机场端口。
+(
+    CANDIDATE="${TEST_DIR}/subscription-ports.yaml"
+    SUB_URL='https://example.invalid/sub'
+    SECRET=''
+    ALLOW_LAN=''
+    AUTHENTICATION=''
+    HTTP_PORT=27890
+    SOCKS_PORT=27891
+    MIXED_PORT=27892
+    MODE=''
+    TUN_ENABLED=''
+    TUN_AUTO_REDIRECT=''
+    DNS_OVERRIDE=''
+    FORCE_UNIFIED_DELAY_AND_TCP_CONCURRENT=false
+    HOOK_DIR="${TEST_DIR}/missing-hooks"
+    MIHOMO_BIN="${TEST_DIR}/missing-mihomo"
+    download_subscription() {
+        printf '%s\n' 'mixed-port: 7890' 'proxies: []' > "$2"
+    }
+    build_subscription_candidate "${CANDIDATE}" direct false
+    assert_file_contains "${CANDIDATE}" 'port: 27890'
+    assert_file_contains "${CANDIDATE}" 'socks-port: 27891'
+    assert_file_contains "${CANDIDATE}" 'mixed-port: 27892'
+)
+
+# TUN auto-redirect 可针对不兼容的 NAS 内核显式关闭。
+(
+    CONFIG_FILE="${TEST_DIR}/tun-auto-redirect.yaml"
+    printf '%s\n' 'mixed-port: 7890' 'proxies: []' > "${CONFIG_FILE}"
+    inject_tun "${CONFIG_FILE}" true false
+    assert_file_contains "${CONFIG_FILE}" '  auto-redirect: false'
+)
+
 # 本地配置路径也必须执行 DNS_OVERRIDE，且只保留一个 dns 顶级块。
 (
     CONFIG_FILE="${TEST_DIR}/local-dns.yaml"
@@ -53,8 +117,12 @@ assert_file_contains "${CONFIG_FILE}" "  - 'bob:two'"
     SECRET=''
     ALLOW_LAN=''
     AUTHENTICATION=''
+    HTTP_PORT=''
+    SOCKS_PORT=''
+    MIXED_PORT=''
     MODE=''
     TUN_ENABLED=''
+    TUN_AUTO_REDIRECT=''
     DNS_OVERRIDE=true
     FORCE_UNIFIED_DELAY_AND_TCP_CONCURRENT=false
     printf '%s\n' \
@@ -97,8 +165,12 @@ assert_file_contains "${CONFIG_FILE}" "  - 'bob:two'"
     SECRET=''
     ALLOW_LAN=''
     AUTHENTICATION=''
+    HTTP_PORT=''
+    SOCKS_PORT=''
+    MIXED_PORT=''
     MODE=''
     TUN_ENABLED=''
+    TUN_AUTO_REDIRECT=''
     DNS_OVERRIDE=''
     FORCE_UNIFIED_DELAY_AND_TCP_CONCURRENT=false
     mkdir -p "${HOOK_DIR}"
@@ -206,10 +278,38 @@ assert_file_contains "${CONFIG_FILE}" "  - 'bob:two'"
         exit 1
     fi
 )
+(
+    HTTP_PORT=65536
+    if load_environment; then
+        echo '超出范围的代理端口不应通过校验' >&2
+        exit 1
+    fi
+)
+(
+    TUN_AUTO_REDIRECT=maybe
+    if load_environment; then
+        echo '非法的 TUN_AUTO_REDIRECT 不应通过校验' >&2
+        exit 1
+    fi
+)
 if validate_cron_schedule '0 * * * *;touch'; then
     echo '含命令注入字符的 cron 表达式不应通过校验' >&2
     exit 1
 fi
+
+# 设置 SUB_URL 后，即使没有定时任务也必须生成可手动执行的更新脚本。
+(
+    UPDATE_SCRIPT="${TEST_DIR}/update_sub.sh"
+    SUB_URL='https://example.invalid/sub'
+    SUB_CRON=''
+    setup_cron "${SUB_CRON}"
+    [ -x "${UPDATE_SCRIPT}" ]
+    assert_file_contains "${UPDATE_SCRIPT}" 'source /app/start.sh'
+    assert_file_contains "${UPDATE_SCRIPT}" 'update_subscription'
+    grep -q '^export HTTP_PORT=' "${UPDATE_SCRIPT}"
+    grep -q '^export TUN_AUTO_REDIRECT=' "${UPDATE_SCRIPT}"
+    grep -q '^export SAFE_PATHS=' "${UPDATE_SCRIPT}"
+)
 
 (
     UPDATE_LOCK_FILE="${TEST_DIR}/missing/update.lock"

@@ -180,6 +180,20 @@ update_authentication() {
     log_info "✅ authentication 已更新"
 }
 
+update_proxy_ports() {
+    local config="$1"
+    local mapping env_name key value
+
+    for mapping in HTTP_PORT:port SOCKS_PORT:socks-port MIXED_PORT:mixed-port; do
+        IFS=: read -r env_name key <<< "${mapping}"
+        value=${!env_name}
+        [ -z "${value}" ] && continue
+        validate_optional_port "${env_name}" "${value}" || return 1
+        log_info "🔗 正在将 ${key} 覆写为 ${value}..."
+        replace_top_level_scalar "${config}" "${key}" "${value}" || return 1
+    done
+}
+
 ensure_unified_delay_and_tcp_concurrent() {
     local config="$1"
     local force_override="${FORCE_UNIFIED_DELAY_AND_TCP_CONCURRENT:-false}"
@@ -199,6 +213,7 @@ ensure_unified_delay_and_tcp_concurrent() {
 inject_tun() {
     local config="$1"
     local tun_enabled="$2"
+    local auto_redirect="${3:-}"
 
     [ -z "${tun_enabled}" ] && return 0
     validate_optional_boolean TUN_ENABLED "${tun_enabled}" || return 1
@@ -206,12 +221,14 @@ inject_tun() {
     remove_top_level_block "${config}" tun || return 1
 
     if [ "${tun_enabled}" = "true" ]; then
+        [ -n "${auto_redirect}" ] || auto_redirect=true
+        validate_optional_boolean TUN_AUTO_REDIRECT "${auto_redirect}" || return 1
         printf '%s\n' \
             'tun:' \
             '  enable: true' \
             '  stack: mixed' \
             '  auto-route: true' \
-            '  auto-redirect: true' \
+            "  auto-redirect: ${auto_redirect}" \
             '  auto-detect-interface: true' >> "${config}" || return 1
         log_info "✅ tun 模式已启用"
     else
@@ -308,12 +325,13 @@ apply_config_overrides() {
     if [ "${force_secret}" = "true" ] || [ -n "${SECRET}" ]; then
         update_secret "${config}" "${SECRET}" || return 1
     fi
+    update_proxy_ports "${config}" || return 1
     update_allow_lan "${config}" "${ALLOW_LAN}" || return 1
     update_authentication "${config}" "${AUTHENTICATION}" || return 1
     if [ "${ensure_defaults}" = "true" ]; then
         ensure_unified_delay_and_tcp_concurrent "${config}" || return 1
     fi
-    inject_tun "${config}" "${TUN_ENABLED}" || return 1
+    inject_tun "${config}" "${TUN_ENABLED}" "${TUN_AUTO_REDIRECT}" || return 1
     inject_dns "${config}" "${DNS_OVERRIDE}" || return 1
     if [ "${ensure_defaults}" = "true" ]; then
         ensure_external_controller "${config}" || return 1

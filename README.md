@@ -1,164 +1,327 @@
+# Clash for Docker（glash）
 
-  
-# Clash for Docker介绍
-![GitHub Repo stars](https://img.shields.io/github/stars/gangz1o/clash4docker?style=for-the-badge)
-![GitHub forks](https://img.shields.io/github/forks/gangz1o/clash4docker?style=for-the-badge)
-![GitHub contributors](https://img.shields.io/github/contributors/gangz1o/clash4docker?style=for-the-badge)
-![GitHub repo size](https://img.shields.io/github/repo-size/gangz1o/clash4docker?style=for-the-badge)
-![GitHub issues](https://img.shields.io/github/issues/gangz1o/clash4docker?style=for-the-badge)
-![Docker Pulls](https://img.shields.io/docker/pulls/gangz1o/glash?style=for-the-badge)
+[![GitHub Stars](https://img.shields.io/github/stars/gangz1o/clash4docker?style=for-the-badge)](https://github.com/gangz1o/clash4docker/stargazers)
+[![GitHub Forks](https://img.shields.io/github/forks/gangz1o/clash4docker?style=for-the-badge)](https://github.com/gangz1o/clash4docker/forks)
+[![GitHub Issues](https://img.shields.io/github/issues/gangz1o/clash4docker?style=for-the-badge)](https://github.com/gangz1o/clash4docker/issues)
+[![Docker Pulls](https://img.shields.io/docker/pulls/gangz1o/glash?style=for-the-badge)](https://hub.docker.com/r/gangz1o/glash)
 
-🚀 基于最新 **Mihomo** 内核，内置 Dashboard 的 Clash Docker 镜像
+基于 [Mihomo](https://github.com/MetaCubeX/mihomo) 内核、内置 [MetacubexD](https://github.com/MetaCubeX/metacubexd) Dashboard 的多架构 Docker 镜像。
 
-## 核心特性
+项目同时支持远程订阅和本地配置。订阅下载后会先在候选文件中完成环境变量覆写、自定义 Hook 和 Mihomo 原生校验；全部成功才替换当前配置。定时更新使用 Controller 热加载，失败时保留或恢复旧配置，不会为了更新订阅主动重启容器。
 
-- ✅ Mihomo (Clash Meta)最新内核
-- ✅ MetacubexD Web Dashboard 内置
-- ✅ 预打包 GeoIP 数据库，无需运行时下载
-- ✅ 支持 amd64 / arm64 架构
-- ✅ **订阅功能**：支持远程订阅链接自动下载配置
-- ✅ **自动更新**：支持定时自动更新订阅并热加载生效
-- ✅ **容错处理**：订阅下载失败时自动回退到本地配置
+快速导航：[订阅模式](#快速开始订阅模式) · [本地配置](#本地配置模式) · [环境变量](#环境变量) · [订阅更新](#订阅更新机制) · [TUN](#tun-模式) · [自定义 Hook](#订阅后自定义-hook) · [故障排查](#故障排查) · [升级](#升级与版本固定)
 
-## 运行时结构
+## 功能
 
-```text
-start.sh                         # 轻量入口
-lib/glash/
-├── app.sh                       # 启动流程编排
-├── common.sh                    # 日志与文件操作
-├── config.sh                    # 配置校验和变换
-├── cron.sh                      # 定时更新任务
-├── environment.sh               # 环境变量规范化与校验
-├── hooks.sh                     # 订阅 Hook
-├── mihomo.sh                    # Mihomo 进程和热加载
-└── subscription.sh              # 下载、锁和更新事务
-```
+- Mihomo 与 MetacubexD 已打包进镜像
+- 支持 `linux/amd64`、`linux/arm64`、`linux/arm/v7`
+- 支持订阅首次下载、定时更新和手动更新
+- 订阅更新默认通过当前 Mihomo 本地代理完成
+- 下载失败不覆盖当前配置，热加载失败自动恢复旧配置
+- 支持固定代理模式、代理端口、Dashboard 密钥和代理认证
+- 支持持久开启或关闭 TUN，并可关闭不兼容的 `auto-redirect`
+- 支持 DNS 覆写和订阅后自定义 Hook
+- 预置 GeoIP、GeoSite 和 Country.mmdb 数据
+- 内置健康检查、日志轮转示例和 `tini` 进程管理
 
-订阅配置先在候选文件中完成环境覆写、Hook 和 Mihomo 原生校验，全部成功后才替换当前配置；热加载失败会恢复磁盘配置并执行补偿加载。
+## 开始之前
 
-## 支持的协议（可能列的不全，以mihomo支持的协议为主）
+先选择适合自己的模式：
 
-| 协议             | 说明                      |
-| ---------------- | ------------------------- |
-| Shadowsocks (SS) | 经典轻量级加密代理        |
-| VMess            | V2Ray 原生协议            |
-| VLESS            | V2Ray 轻量协议，性能更优  |
-| Trojan           | 基于 TLS 的隐蔽协议       |
-| Hysteria         | 基于 QUIC 的高速协议      |
-| Hysteria2        | Hysteria 第二代，更快更稳 |
-| TUIC             | 基于 QUIC 的多路复用协议  |
-| WireGuard        | 现代化 VPN 协议           |
-| HTTP             | HTTP/HTTPS 代理           |
-| SOCKS5           | 通用 SOCKS5 代理          |
+| 使用场景 | 推荐模式 | 配置挂载 | 是否需要 TUN |
+| --- | --- | --- | --- |
+| 使用机场订阅，希望自动更新 | 订阅模式 | 可写配置目录 | 否 |
+| 自己维护完整 `config.yaml` | 本地配置模式 | 单文件可只读挂载 | 否 |
+| 应用主动连接 HTTP/SOCKS5 代理 | 以上任一模式 | 均可 | 否 |
+| 希望透明接管容器网络命名空间内的流量 | TUN 模式 | 可写配置目录 | 是 |
+| 希望将 NAS/服务器作为整个局域网网关 | 高级网络部署 | 取决于平台 | 是，并需额外配置宿主机路由、防火墙和转发 |
 
-## 快速开始
+> TUN 在 Docker bridge 网络中只修改容器自己的网络命名空间，不会因为开启 `TUN_ENABLED=true` 就自动接管宿主机或整个局域网。大多数用户只需要映射 7890/7891/7892 代理端口，不需要开启 TUN。
 
- Clash for Docker 支持两种使用模式：**订阅模式**（推荐）和**本地配置模式**。
+## 快速开始：订阅模式
 
-### 模式一：订阅模式（推荐）
-
-自动从订阅链接下载配置，支持定时更新，无需手动维护配置文件。
-
-#### Docker Run
-
-```bash
-docker run -d \
-  --name glash \
-  --restart unless-stopped \
-  -p 7890:7890 \
-  -p 7891:7891 \
-  -p 9090:9090 \
-  -v /path/to/config:/root/.config/mihomo \
-  -e SUB_URL=https://your-subscription-url \
-  -e SUB_CRON="0 */6 * * *" \
-  -e SECRET=your-dashboard-password \
-  -e ALLOW_LAN=true \
-  gangz1o/glash:latest
-```
-
-#### Docker Compose
+创建 `docker-compose.yml`：
 
 ```yaml
 services:
   glash:
     image: gangz1o/glash:latest
     container_name: glash
-    restart: always
+    restart: unless-stopped
     ports:
-      - '7890:7890' # HTTP 代理
-      - '7891:7891' # SOCKS5 代理
-      - '9090:9090' # Dashboard
+      - "7890:7890" # HTTP
+      - "7891:7891" # SOCKS5
+      - "7892:7892" # HTTP + SOCKS5
+      - "9090:9090" # Dashboard 与 API
     volumes:
       - ./config:/root/.config/mihomo
     environment:
-      - TZ=Asia/Shanghai
-      - SUB_URL=https://your-subscription-url
-      - SUB_CRON=0 */6 * * *
-      - SECRET=your-dashboard-password
-      - ALLOW_LAN=true
+      TZ: Asia/Shanghai
+      SUB_URL: https://your-subscription-url
+      SUB_CRON: "0 */6 * * *"
+      SECRET: change-this-dashboard-secret
+      ALLOW_LAN: "true"
+      HTTP_PORT: "7890"
+      SOCKS_PORT: "7891"
+      MIXED_PORT: "7892"
 ```
 
-### 模式二：本地配置模式
+启动并查看日志：
 
-使用本地 `config.yaml` 配置文件，适合手动管理配置的用户。
+```bash
+docker compose up -d
+docker logs -f glash
+```
 
-#### Docker Run
+配置目录必须可写。订阅模式不要把 `config.yaml` 单文件挂载为 `:ro`，因为容器需要保存订阅并写入环境变量覆写项。
+
+### Docker Run
 
 ```bash
 docker run -d \
   --name glash \
-  --restart always \
+  --restart unless-stopped \
   -p 7890:7890 \
   -p 7891:7891 \
+  -p 7892:7892 \
   -p 9090:9090 \
-  -v /path/to/config.yaml:/root/.config/mihomo/config.yaml:ro \
+  -v /path/to/config:/root/.config/mihomo \
+  -e SUB_URL=https://your-subscription-url \
+  -e 'SUB_CRON=0 */6 * * *' \
+  -e SECRET=change-this-dashboard-secret \
+  -e ALLOW_LAN=true \
+  -e HTTP_PORT=7890 \
+  -e SOCKS_PORT=7891 \
+  -e MIXED_PORT=7892 \
   gangz1o/glash:latest
 ```
 
-#### Docker Compose
+## 本地配置模式
+
+本地模式不会下载订阅，适合已经拥有完整 Mihomo 配置的用户：
 
 ```yaml
 services:
   glash:
     image: gangz1o/glash:latest
     container_name: glash
-    restart: always
+    restart: unless-stopped
     ports:
-      - '7890:7890' # HTTP 代理
-      - '7891:7891' # SOCKS5 代理
-      - '9090:9090' # Dashboard
+      - "7890:7890"
+      - "7891:7891"
+      - "7892:7892"
+      - "9090:9090"
     volumes:
       - ./config.yaml:/root/.config/mihomo/config.yaml:ro
     environment:
-      - TZ=Asia/Shanghai
-      - ALLOW_LAN=true
+      TZ: Asia/Shanghai
 ```
 
-### 模式三：TUN 模式
+最小配置至少需要一个代理端口、`proxies` 或 `proxy-providers`，以及 Dashboard 所需的 Controller：
 
-TUN 模式可接管系统全局流量，无需手动配置代理。设置 `TUN_ENABLED=true` 后，每次重启均自动恢复 TUN 状态，无需手动在 Dashboard 中开启。
+```yaml
+mixed-port: 7892
+allow-lan: true
+mode: rule
+external-controller: 0.0.0.0:9090
+secret: "change-this-dashboard-secret"
 
-> ⚠️ **注意**：TUN 模式需要容器具有 `NET_ADMIN` 能力和 `/dev/net/tun` 设备，请勿在不受信任的环境中使用。
+proxies:
+  # 你的节点
 
-#### Docker Run
+proxy-groups:
+  # 你的代理组
+
+rules:
+  - MATCH,DIRECT
+```
+
+完整结构可参考 [`config.example.yaml`](./config.example.yaml)。
+
+> 本地单文件使用 `:ro` 时不要设置会修改配置的环境变量，例如 `SECRET`、`MODE`、端口覆写、`TUN_ENABLED` 或 `DNS_OVERRIDE`。需要这些能力时请改为挂载可写目录。
+
+## Dashboard
+
+浏览器访问：
+
+```text
+http://<Docker 宿主机 IP>:9090/ui/
+```
+
+首次进入时填写：
+
+| 项目 | 填写内容 |
+| --- | --- |
+| 后端地址 | `http://<Docker 宿主机 IP>:9090` |
+| 密钥 | 与 `SECRET` 或配置文件中的 `secret` 一致 |
+
+只有浏览器本身运行在 Docker 宿主机上时，才能使用 `http://127.0.0.1:9090`。从另一台电脑或手机访问 NAS 时，`127.0.0.1` 指向的是电脑或手机自己，必须填写 NAS 的实际 IP。
+
+如果使用 HTTPS 域名访问 Dashboard，后端也必须使用 HTTPS，否则浏览器会拦截 HTTP API 请求并提示 Mixed Content。可使用 Nginx、Caddy 等反向代理，让 `/ui/` 和 Mihomo API 使用同一个 HTTPS 域名。
+
+## 使用代理
+
+### 宿主机或局域网设备
+
+先设置 `ALLOW_LAN=true`，然后使用 Docker 宿主机 IP：
+
+```text
+HTTP:   http://192.168.1.10:7890
+SOCKS5: socks5://192.168.1.10:7891
+Mixed:  192.168.1.10:7892
+```
+
+可用 curl 验证：
 
 ```bash
-docker run -d \
-  --name glash \
-  --restart unless-stopped \
-  --cap-add NET_ADMIN \
-  --device /dev/net/tun:/dev/net/tun \
-  -p 7890:7890 \
-  -p 7891:7891 \
-  -p 9090:9090 \
-  -v /path/to/config:/root/.config/mihomo \
-  -e SUB_URL=https://your-subscription-url \
-  -e TUN_ENABLED=true \
-  gangz1o/glash:latest
+curl -x http://192.168.1.10:7890 https://www.gstatic.com/generate_204
+curl --proxy socks5h://192.168.1.10:7891 https://www.gstatic.com/generate_204
 ```
 
-#### Docker Compose
+### 其他 Docker 容器
+
+让两个容器加入同一个用户自定义 Docker 网络后，使用服务名连接，不要使用 `127.0.0.1`：
+
+```text
+HTTP_PROXY=http://glash:7890
+HTTPS_PROXY=http://glash:7890
+ALL_PROXY=socks5h://glash:7891
+```
+
+### 代理端口认证
+
+`AUTHENTICATION` 会写入 Mihomo 的全局 `authentication`，适用于 HTTP、SOCKS5 和 Mixed 代理端口：
+
+```yaml
+environment:
+  AUTHENTICATION: "alice:password,bob:another-password"
+```
+
+使用带认证的 HTTP 代理：
+
+```bash
+curl -x http://alice:password@192.168.1.10:7890 https://www.gstatic.com/generate_204
+```
+
+认证不是流量加密。不要只依靠用户名和密码把代理端口直接暴露到互联网，应同时使用防火墙、可信网络或 VPN。
+
+## 环境变量
+
+未设置的可选覆写项会保留订阅或本地配置中的原值。
+
+### 运行环境
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `TZ` | `Asia/Shanghai` | 容器时区，也决定 cron 的执行时间 |
+| `SAFE_PATHS` | 空 | 追加传给 Mihomo 的安全路径，多个容器内路径用冒号分隔；仅在配置引用挂载目录时需要 |
+
+### 订阅与更新
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `SUB_URL` | 空 | 返回 Mihomo/Clash YAML 配置的 HTTP(S) 订阅地址 |
+| `SUB_CRON` | 空 | 5 段 cron 表达式；为空时不自动更新 |
+| `DOWNLOAD_PROXY` | 空 | 首次下载无法直连、且没有可用本地配置时使用的外部代理 |
+| `SUB_USER_AGENT` | `clash.meta` | 下载订阅使用的 User-Agent |
+
+常用定时表达式：
+
+| 表达式 | 含义 |
+| --- | --- |
+| `0 */6 * * *` | 每 6 小时 |
+| `0 0 * * *` | 每天 00:00 |
+| `0 */12 * * *` | 每 12 小时 |
+| `*/30 * * * *` | 每 30 分钟 |
+| `0 8 * * *` | 每天 08:00 |
+
+### 持久覆写
+
+这些值会在启动和每次订阅更新时重新写入，避免 Dashboard 临时修改或机场订阅内容在重启后覆盖用户选择。
+
+| 变量 | 可选值 | 说明 |
+| --- | --- | --- |
+| `SECRET` | 任意单行字符串 | Dashboard/API 密钥；使用定时更新时应与运行中配置一致 |
+| `ALLOW_LAN` | `true` / `false` | 是否允许局域网访问代理端口 |
+| `MODE` | `rule` / `global` / `direct` | 固定 Mihomo 运行模式 |
+| `HTTP_PORT` | `1`–`65535` | 覆写顶层 `port` |
+| `SOCKS_PORT` | `1`–`65535` | 覆写顶层 `socks-port` |
+| `MIXED_PORT` | `1`–`65535` | 覆写顶层 `mixed-port` |
+| `AUTHENTICATION` | `user:pass[,user:pass]` | HTTP、SOCKS5、Mixed 代理认证 |
+| `DNS_OVERRIDE` | `true` / `false` | 为 `true` 时用项目预设完整覆写顶层 `dns` 配置 |
+| `TUN_ENABLED` | `true` / `false` | 持久开启或关闭顶层 `tun` 配置 |
+| `TUN_AUTO_REDIRECT` | `true` / `false` | `TUN_ENABLED=true` 时控制 `auto-redirect`；未设置时为 `true` |
+| `FORCE_UNIFIED_DELAY_AND_TCP_CONCURRENT` | `true` / `false` | 订阅缺少 `unified-delay`、`tcp-concurrent` 时会补为 `true`；设为 `true` 时也覆写已有值 |
+
+### 端口映射规则
+
+Docker 端口格式是 `宿主机端口:容器端口`，右侧必须与 Mihomo 最终配置一致。例如希望外部继续使用 7890，但容器内 HTTP 端口固定为 17890：
+
+```yaml
+ports:
+  - "7890:17890"
+environment:
+  HTTP_PORT: "17890"
+```
+
+推荐直接把容器内端口固定为项目默认值，这样订阅即使携带其他端口也不会破坏映射：
+
+```yaml
+ports:
+  - "7890:7890"
+  - "7891:7891"
+  - "7892:7892"
+environment:
+  HTTP_PORT: "7890"
+  SOCKS_PORT: "7891"
+  MIXED_PORT: "7892"
+```
+
+## 订阅更新机制
+
+### 启动时没有本地配置
+
+1. 尝试直连 `SUB_URL`。
+2. 直连失败且设置了 `DOWNLOAD_PROXY` 时，尝试外部代理。
+3. 下载内容通过基础检查、环境覆写、Hook 和 Mihomo 原生校验后才会安装。
+4. 所有候选配置都不可用时容器退出，不会留下无效配置。
+
+### 启动时已有本地配置
+
+1. 先尝试直连获取新订阅。
+2. 如果直连不可用，使用现有配置启动 Mihomo。
+3. 等待本地代理就绪，再通过当前 HTTP 或 Mixed 代理更新订阅。
+4. 更新失败时继续运行现有配置。
+5. 如果现有配置也无法启动，最后尝试 `DOWNLOAD_PROXY`。
+
+### 定时更新
+
+1. 检查 `http://127.0.0.1:9090/version` 和 `SECRET` 鉴权。
+2. 使用当前配置中的 HTTP 或 Mixed 端口作为本地代理下载订阅。
+3. 在候选文件中执行覆写、Hook、基础校验和 Mihomo 原生校验。
+4. 安装候选配置并调用 Controller 热加载，不终止 Mihomo 进程。
+5. 热加载失败时恢复旧配置并执行补偿加载。
+6. 文件锁会阻止两个更新任务同时修改配置。
+
+专项日志：
+
+```bash
+docker exec glash cat /var/log/subscription.log
+```
+
+### 手动更新
+
+设置 `SUB_URL` 后，即使没有配置 `SUB_CRON`，容器也会生成手动更新命令：
+
+```bash
+docker exec glash /app/update_sub.sh
+```
+
+手动更新与定时更新使用相同的本地代理、校验、Hook、热加载和失败恢复流程。它要求 Mihomo 已经运行，并且 `SECRET` 与运行中的 Controller 配置一致。
+
+## TUN 模式
+
+TUN 需要 Linux TUN 设备和 `NET_ADMIN` 能力：
 
 ```yaml
 services:
@@ -171,328 +334,327 @@ services:
     devices:
       - /dev/net/tun:/dev/net/tun
     ports:
-      - '7890:7890'
-      - '7891:7891'
-      - '9090:9090'
+      - "7890:7890"
+      - "7891:7891"
+      - "7892:7892"
+      - "9090:9090"
     volumes:
       - ./config:/root/.config/mihomo
     environment:
-      - TZ=Asia/Shanghai
-      - SUB_URL=https://your-subscription-url
-      - TUN_ENABLED=true
+      SUB_URL: https://your-subscription-url
+      TUN_ENABLED: "true"
 ```
 
-### 指定架构下载
-
-默认自动匹配当前平台，如需指定架构：
-
-```bash
-# x86_64 / amd64
-docker pull --platform linux/amd64 gangz1o/glash:latest
-
-# ARM64 (Apple Silicon / ARM 服务器)
-docker pull --platform linux/arm64 gangz1o/glash:latest
-```
-
-## 订阅功能详解
-
-> ⚠️ **重要提示**：使用订阅功能时，配置目录必须**可写**，不能使用 `:ro`（只读）模式挂载！
-
-### 环境变量
-
-| 变量               | 说明                                                           | 示例                      |
-| ------------------ | -------------------------------------------------------------- | ------------------------- |
-| `SUB_URL`          | 订阅地址，支持返回 Clash 配置的链接                            | `https://example.com/sub` |
-| `SUB_CRON`         | 自动更新的 cron 表达式                                         | `0 */6 * * *`             |
-| `SECRET`           | Dashboard 登录密钥，会自动注入配置                             | `my-password`             |
-| `ALLOW_LAN`        | 是否允许局域网连接，默认不修改配置                             | `true` 或 `false`         |
-| `MODE`             | 固定代理模式，启动和订阅更新后自动恢复                         | `rule`、`global` 或 `direct` |
-| `TUN_ENABLED`      | 是否启用 TUN 模式，重启后自动恢复（需配合 Docker 权限）        | `true` 或 `false`         |
-| `DOWNLOAD_PROXY`   | 首次下载订阅时使用的外部代理（可选）                           | `http://192.168.1.1:7890` |
-| `SUB_USER_AGENT`   | 下载订阅时使用的 User-Agent，默认 `clash.meta`（可选）         | `clash.meta`              |
-| `DNS_OVERRIDE`     | DNS复写功能，此功能仅针对不含DNS规则内容的Clash订阅链接（可选）                 | `true` 或 `false`         |
-| `AUTHENTICATION`   | HTTP 基本认证凭据，格式 `username:password`，自动注入配置文件（可选） | `user:pass`               |
-
-### 工作逻辑
-
-1. **启动时（本地有配置）**：
-   - 先用本地配置启动 mihomo
-   - 等待代理服务就绪后，通过本地代理 (127.0.0.1:7890) 更新订阅
-   - 更新成功后自动重启生效
-
-2. **启动时（本地无配置）**：
-   - 先尝试直连下载订阅
-   - 直连失败时，如果设置了 `DOWNLOAD_PROXY`，使用外部代理下载
-   - 下载成功后启动 mihomo
-
-3. **定时更新**：
-   - 如果设置了 `SUB_CRON`，按照 cron 表达式定时更新
-   - 通过本地代理下载订阅
-   - 更新成功后通过 External Controller 热加载配置，不重启 mihomo 或容器
-   - 更新失败时保持当前配置运行
-   - 如果当前配置启用了 `secret`，必须设置值相同的 `SECRET` 环境变量供热加载鉴权
-
-4. **SECRET 注入**：
-   - 如果设置了 `SECRET`，会自动写入配置文件的 `secret` 字段
-   - 方便统一管理 Dashboard 密码
-
-5. **AUTHENTICATION 注入**：
-   - 如果设置了 `AUTHENTICATION`，会自动向配置文件写入 `authentication` 字段
-   - 格式为 `username:password`，支持同时设置多个凭据（用逗号分隔）
-   - 提供 HTTP 基本认证保护代理端口
-
-6. **ALLOW_LAN 注入**：
-   - 如果设置了 `ALLOW_LAN`，会自动写入配置文件的 `allow-lan` 字段
-   - 设置为 `true` 允许局域网连接，`false` 禁止
-
-7. **MODE 注入**：
-   - 设置 `MODE=rule`、`MODE=global` 或 `MODE=direct` 后，每次启动和订阅更新都会写入指定代理模式
-   - 未设置时保留订阅配置中的模式，非法值不会修改配置
-   - 解决通过 Dashboard 切换代理模式后，订阅更新或重启恢复原模式的问题
-   - 为保证配置原子更新，使用 `MODE` 时需挂载可写配置目录，不支持单独挂载 `config.yaml`
-
-8. **TUN_ENABLED 注入**：
-   - 如果设置了 `TUN_ENABLED=true`，每次启动和订阅更新后自动向配置写入 TUN 模式配置段
-   - 解决了通过 Dashboard UI 开启 TUN 后重启丢失状态的问题
-   - 需要同时在 docker-compose.yml 中开启 `NET_ADMIN` 权限和 `/dev/net/tun` 设备
-
-> **提示**：如果订阅地址需要代理访问且本地没有配置文件，请设置 `DOWNLOAD_PROXY` 指向一个可用的代理。
-
-### 常用 Cron 表达式
-
-| 表达式         | 说明              |
-| -------------- | ----------------- |
-| `0 */6 * * *`  | 每 6 小时更新     |
-| `0 0 * * *`    | 每天凌晨更新      |
-| `0 */12 * * *` | 每 12 小时更新    |
-| `*/30 * * * *` | 每 30 分钟更新    |
-| `0 8 * * *`    | 每天早上 8 点更新 |
-
-### 查看订阅更新日志
-
-```bash
-docker exec glash cat /var/log/subscription.log
-```
-
-## ⚠️ 配置要求
-
-你的 `config.yaml` 必须包含以下配置才能正常使用 Dashboard：
+项目注入的默认 TUN 配置为：
 
 ```yaml
-# 允许外部访问 API
-external-controller: 0.0.0.0:9090
-或者是
-external-controller::9090
-# 密钥（用于登录dashboard ，可不填，建议填上，提高安全性）
-secret: ''
+tun:
+  enable: true
+  stack: mixed
+  auto-route: true
+  auto-redirect: true
+  auto-detect-interface: true
 ```
 
-## 端口说明
+如果日志出现以下错误，通常是 NAS 内核、netlink、iptables/nftables 与 `auto-redirect` 不兼容：
 
-| 端口 | 用途                     |
-| ---- | ------------------------ |
-| 7890 | HTTP 代理                |
-| 7891 | SOCKS5 代理              |
-| 7892 | 混合代理 (HTTP + SOCKS5) |
-| 9090 | RESTful API & Dashboard  |
-
-## Dashboard 访问
-
-启动后访问：http://127.0.0.1:9090/ui/
-![5Q9E9uQk9j6x9tkCSMu9MDxY56MYklUg.webp](https://cdn.nodeimage.com/i/5Q9E9uQk9j6x9tkCSMu9MDxY56MYklUg.webp)
-
-首次访问需要配置：
-
-- 后端地址：`http://127.0.0.1:9090`
-- 密钥：与 config.yaml 中的 `secret` 一致
-
-## 配置示例
-
-```yaml
-port: 7890
-socks-port: 7891
-allow-lan: true
-mode: rule
-log-level: info
-
-# Dashboard 必需配置
-external-controller: 0.0.0.0:9090
-
-proxies:
-  - name: '节点名称'
-    type: vmess
-    server: example.com
-    port: 443
-    uuid: your-uuid
-    # ... 其他配置
-
-proxy-groups:
-  - name: '🚀 节点选择'
-    type: select
-    proxies:
-      - 节点名称
-
-rules:
-  - GEOIP,CN,DIRECT
-  - MATCH,🚀 节点选择
+```text
+Start TUN listening error: auto redirect ... netlink receive ...
 ```
 
-## 界面一览
-
-![kWcCiiHfK3fmyFWQaC6Ndkh0vnfLj0lP.webp](https://cdn.nodeimage.com/i/kWcCiiHfK3fmyFWQaC6Ndkh0vnfLj0lP.webp)
-![vA3jgJCQmhsLNVqoNWj8cKvqovJmX4QK.webp](https://cdn.nodeimage.com/i/vA3jgJCQmhsLNVqoNWj8cKvqovJmX4QK.webp)
-![zDENCwikV4ZKAxrBwPjKsj3MXUYTpxiR.webp](https://cdn.nodeimage.com/i/zDENCwikV4ZKAxrBwPjKsj3MXUYTpxiR.webp)
-![zDENCwikV4ZKAxrBwPjKsj3MXUYTpxiR.webp](https://cdn.nodeimage.com/i/zDENCwikV4ZKAxrBwPjKsj3MXUYTpxiR.webp)
-![gvdOcbUtUASmKtlfKY7crcokkIQYY0nM.webp](https://cdn.nodeimage.com/i/gvdOcbUtUASmKtlfKY7crcokkIQYY0nM.webp)
-
-## 常见问题
-
-### Q1：Dashboard 提示"混合内容"（Mixed Content）错误，无法连接后端
-
-**现象**：通过 HTTPS 地址访问 Dashboard（例如 `https://metacubex.github.io/metacubexd/`），填入后端地址 `http://your-server:9090` 后，浏览器报错 `Mixed Content` 并拒绝请求。
-
-**原因**：HTTPS 页面不允许发起 HTTP 请求，属于浏览器安全限制，无法绕过。
-
-**解决方案（推荐）：用反向代理同时代理前端页面和 API**
-
-在服务器上配置 nginx，将同一个 HTTPS 域名同时反代 Dashboard UI 和 mihomo API：
-
-```nginx
-server {
-    listen 443 ssl;
-    server_name your-domain.com;
-    # ssl_certificate / ssl_certificate_key 省略
-
-    # 反代 Dashboard UI
-    location /ui/ {
-        proxy_pass http://127.0.0.1:9090/ui/;
-    }
-
-    # 反代 mihomo API（Dashboard 会向同域名发起 API 请求）
-    location / {
-        proxy_pass http://127.0.0.1:9090/;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-}
-```
-
-配置完成后，通过 `https://your-domain.com/ui/` 访问 Dashboard，后端地址填 `https://your-domain.com`，前端和 API 均走 HTTPS，不再触发混合内容限制。
-
-**备选方案**：直接用 HTTP 地址访问内置 Dashboard，例如 `http://your-server:9090/ui/`，避免 HTTPS 限制。
-
----
-
-### Q2：订阅下载失败，容器无法启动或一直用旧配置
-
-1. 检查 `SUB_URL` 是否正确，可在宿主机用 `curl -v "$SUB_URL"` 验证是否可以直连访问
-2. 如果订阅地址需要代理才能访问，且本地**没有**现成配置文件，请通过 `DOWNLOAD_PROXY` 提供一个可用的外部代理：
-   ```bash
-   -e DOWNLOAD_PROXY=http://192.168.1.1:7890
-   ```
-3. 查看容器日志确认具体报错：
-   ```bash
-   docker logs glash
-   ```
-4. 查看订阅更新专项日志：
-   ```bash
-   docker exec glash cat /var/log/subscription.log
-   ```
-
----
-
-### Q3：TUN 模式在 Dashboard 手动开启后，重启容器就失效了
-
-TUN 状态写在运行时内存中，容器重启后不会保留。请通过环境变量持久化：
+可关闭自动重定向后重建容器：
 
 ```yaml
 environment:
-  - TUN_ENABLED=true
+  TUN_ENABLED: "true"
+  TUN_AUTO_REDIRECT: "false"
 ```
 
-同时确保 compose 文件中已添加必要权限：
+```bash
+docker compose up -d --force-recreate
+```
+
+### Docker 网络边界
+
+- bridge 模式：TUN 路由位于 glash 容器自己的网络命名空间，只影响该命名空间。
+- 其他容器：通常应显式配置 `HTTP_PROXY`、`HTTPS_PROXY` 或 `ALL_PROXY`，而不是期待 glash 的 TUN 自动接管它们。
+- 宿主机和局域网网关：需要宿主机网络命名空间、IP forwarding、防火墙/NAT 和正确的默认网关设置；不同 NAS 系统限制不同，本项目的一个环境变量无法代替这些系统配置。
+- `network_mode: host` 会直接影响宿主网络，应了解路由和防火墙后再使用；host 模式下不要再配置 `ports`。
+
+不要只用 `ping` 判断代理是否正常。普通 HTTP/SOCKS5 代理不代理 ICMP，部分远端也会丢弃 ICMP；优先使用前文的 `curl` 命令验证。
+
+## 订阅后自定义 Hook
+
+订阅模式可以把可执行脚本挂载到 `/app/hooks.d`。每个脚本收到候选配置路径作为第一个参数，按文件名顺序执行；任一 Hook 失败都会取消本次更新，不覆盖当前配置。
 
 ```yaml
-cap_add:
-  - NET_ADMIN
-devices:
-  - /dev/net/tun:/dev/net/tun
+volumes:
+  - ./config:/root/.config/mihomo
+  - ./hooks.d:/app/hooks.d:ro
 ```
 
-设置后，每次重启容器都会自动向配置文件注入 TUN 配置段并生效。
+Hook 只对订阅下载和更新生效，不会修改纯本地模式的配置。
 
----
+### 示例：让 PT 端口直连
 
-### Q4：容器启动了，但浏览器打开 `http://127.0.0.1:9090/ui/` 无响应
+创建 `hooks.d/10-direct-pt-ports.sh`：
 
-1. 确认容器正在运行：`docker ps | grep glash`
-2. 确认宿主机端口映射正确（9090 已映射）：`docker port glash`
-3. 如果是远程服务器，请将 `127.0.0.1` 替换为服务器实际 IP，并确认防火墙已放行 9090 端口
-4. 检查配置文件中是否包含 `external-controller: 0.0.0.0:9090`（缺少此配置则 API 不启动）
+```bash
+#!/bin/bash
+set -e
 
----
+config_file="$1"
+temp_file="${config_file}.hook.$$"
+trap 'rm -f "${temp_file}"' EXIT
 
-### Q5：挂载了新的 `config.yaml`，但修改不生效
+awk '
+    function add_rules() {
+        print "  - SRC-PORT,6881,DIRECT"
+        print "  - DST-PORT,6881,DIRECT"
+        print "  - SRC-PORT,51413,DIRECT"
+        print "  - DST-PORT,51413,DIRECT"
+    }
+    !inserted && /^rules:[[:space:]]*$/ {
+        print
+        add_rules()
+        inserted = 1
+        next
+    }
+    !inserted && /^rules:[[:space:]]*\[\][[:space:]]*$/ {
+        print "rules:"
+        add_rules()
+        inserted = 1
+        next
+    }
+    !inserted && /^rules:/ {
+        print "不支持内联 rules，请改为 YAML 列表格式" > "/dev/stderr"
+        exit 2
+    }
+    { print }
+    END {
+        if (!inserted) {
+            print "rules:"
+            add_rules()
+        }
+    }
+' "${config_file}" > "${temp_file}"
 
-- 使用 `:ro`（只读）模式挂载单个文件时，直接重启容器即可生效
-- **使用订阅功能时禁止用 `:ro` 模式**，因为 start.sh 需要向配置文件写入 `secret`、`allow-lan` 等字段
-- 若修改配置后容器行为未变化，请先检查挂载路径是否正确：
-  ```bash
-  docker exec glash cat /root/.config/mihomo/config.yaml | head -5
-  ```
+mv "${temp_file}" "${config_file}"
+```
 
----
+赋予执行权限并重建容器：
 
-## 贡献与支持
-如果你有好的需求或者发现了一些Bug, 欢迎PR，一起共建开源生态
+```bash
+chmod +x hooks.d/10-direct-pt-ports.sh
+docker compose up -d --force-recreate
+docker exec glash /app/update_sub.sh
+```
+
+如果 qBittorrent 或 Transmission 独占一个容器 IP/局域网 IP，使用 `SRC-IP-CIDR,<IP>/32,DIRECT` 通常比端口规则更完整，因为 BitTorrent 会连接大量不同目标端口。
+
+## 运维命令
+
+```bash
+# 容器状态与健康检查
+docker ps --filter name=glash
+docker inspect glash --format '{{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{end}} restart={{.RestartCount}} oom={{.State.OOMKilled}}'
+
+# 主日志
+docker logs --tail=200 glash
+
+# 订阅更新日志
+docker exec glash tail -n 200 /var/log/subscription.log
+
+# 当前生效的关键配置
+docker exec glash sh -c "grep -E '^(port|socks-port|mixed-port|allow-lan|mode|external-controller|secret|authentication|tun|dns):' /root/.config/mihomo/config.yaml"
+
+# Controller 是否可访问；配置 SECRET 时添加 Authorization 请求头
+curl http://127.0.0.1:9090/version
+curl -H 'Authorization: Bearer your-secret' http://127.0.0.1:9090/version
+
+# Mihomo 原生配置校验
+docker exec glash /app/mihomo -t -d /root/.config/mihomo -f /root/.config/mihomo/config.yaml
+
+# 手动更新订阅
+docker exec glash /app/update_sub.sh
+```
+
+## 故障排查
+
+### Dashboard 提示“无法连接后端”
+
+按顺序检查：
+
+1. 从其他电脑或手机访问时，后端地址不能填 `127.0.0.1`，应填 `http://NAS-IP:9090`。
+2. 运行 `docker port glash`，确认 9090 已映射。
+3. 运行 `curl http://NAS-IP:9090/version`；设置密钥时加 Bearer 请求头。
+4. 确认配置包含 `external-controller: 0.0.0.0:9090`。
+5. 确认 Dashboard 中填写的密钥与 `SECRET` 一致。
+6. HTTPS 页面不能连接 HTTP 后端；统一使用 HTTP，或给 UI 和 API 配置同域 HTTPS 反向代理。
+
+### 容器正常，但 7890/7891/7892 无法连接
+
+1. 确认 `ALLOW_LAN=true`。
+2. 查看有效配置中的 `port`、`socks-port`、`mixed-port`。
+3. Docker 映射右侧端口必须等于 Mihomo 容器内端口。
+4. 机场订阅会修改端口时，设置 `HTTP_PORT`、`SOCKS_PORT`、`MIXED_PORT` 固定端口。
+5. 检查宿主机防火墙；不要把代理端口直接暴露到公网。
+
+### Dashboard 修改 Mixed 端口后，重启又变成 0 或原值
+
+Dashboard 的修改是运行态配置，订阅刷新和容器重启可能重新加载磁盘配置。使用环境变量持久设置：
+
+```yaml
+environment:
+  MIXED_PORT: "7892"
+```
+
+HTTP 和 SOCKS5 端口分别使用 `HTTP_PORT`、`SOCKS_PORT`。
+
+### 订阅下载失败、下载到 HTML 或一直使用旧配置
+
+1. 在宿主机运行 `curl -v '订阅地址'` 检查地址和响应。
+2. 某些订阅依赖特定 User-Agent，可设置 `SUB_USER_AGENT`。
+3. 首次启动没有本地配置、且订阅必须走代理时，设置 `DOWNLOAD_PROXY`。
+4. 已有配置时，确认当前 HTTP 或 Mixed 端口能够访问网络。
+5. 查看 `/var/log/subscription.log` 中的基础校验、Mihomo 校验或 Hook 错误。
+6. 新订阅失败不会替换当前可用配置，这是预期的容错行为。
+
+### 手动或定时更新提示 Controller/SECRET 错误
+
+更新前会访问 9090 Controller。确保：
+
+- 有 `external-controller: 0.0.0.0:9090`
+- `SECRET` 与运行中配置的 `secret` 完全相同
+- 9090 没被其他进程占用
+- 本地请求没有被 `HTTP_PROXY` 等宿主环境变量劫持；项目内部请求已主动绕过代理
+
+### 定时更新时出现 `Mihomo shutting down` 或容器重启
+
+旧版本通过终止并重启 Mihomo 应用订阅，可能让 PID 1 退出。该流程从 v2.2.3 起已改为 Controller 热加载。升级并强制重建：
+
+```bash
+docker compose pull
+docker compose up -d --force-recreate
+```
+
+随后检查实际镜像和容器启动时间，避免仍在运行旧容器。
+
+### TUN 开启失败或局域网设备仍无法访问代理
+
+1. 确认存在 `/dev/net/tun`，并已添加 `NET_ADMIN` 和设备映射。
+2. 出现 `auto redirect`、`netlink`、`numerical result out of range` 时设置 `TUN_AUTO_REDIRECT=false`。
+3. bridge 模式中的 TUN 不会自动接管宿主机或局域网流量。
+4. 将 NAS 设为局域网网关还需要系统级 IP 转发、路由、防火墙/NAT；请按 NAS 系统文档检查。
+5. 不要以 `ping` 作为唯一验证，改用 HTTP/SOCKS5 `curl` 测试。
+
+### qBittorrent、Transmission 或 PT 入站异常
+
+1. 如果客户端显式设置了代理，确认是否需要为 BT 流量关闭代理。
+2. TUN/透明代理场景可用 `SRC-PORT`、`DST-PORT` 规则直连；订阅模式通过 Hook 持久注入。
+3. 独立容器或独立设备优先按源 IP 设置 `SRC-IP-CIDR,...,DIRECT`。
+4. 入站端口还需要在路由器、宿主机防火墙和 Docker 中正确转发；Mihomo 分流规则不能代替端口映射。
+
+### 内存持续增长或容器被系统杀掉
+
+先区分“连接数增长”“内核内存未释放”和“Docker OOM”：
+
+```bash
+docker stats --no-stream glash
+docker inspect glash --format 'oom={{.State.OOMKilled}} exit={{.State.ExitCode}} restart={{.RestartCount}}'
+docker logs --tail=300 glash
+```
+
+同时在 Dashboard 查看活跃连接数。如果存在数万连接，先定位产生连接的客户端、BT/PT 程序或可能的 TUN 路由回环；连接数与内存一起增长并不等于已经证明内存泄漏。
+
+若升级到最新镜像后仍可复现，请在 issue 中提供：镜像标签、Mihomo 版本、CPU 架构、NAS/系统、完整 compose（隐去订阅和密码）、是否开启 TUN、问题前后的连接数与内存、`OOMKilled`、订阅更新时间及相关日志。
+
+### 配置文件修改或环境覆写不生效
+
+1. 订阅模式必须挂载可写目录，不能只读挂载单个文件。
+2. 检查实际挂载内容：`docker exec glash head -n 30 /root/.config/mihomo/config.yaml`。
+3. 环境变量修改后需要重建容器：`docker compose up -d --force-recreate`。
+4. Dashboard 修改可能在下一次订阅更新后被环境变量覆写，这是持久覆写的设计行为。
+5. Hook 只在订阅流程执行，纯本地配置模式不会运行 Hook。
+
+## 升级与版本固定
+
+升级 latest：
+
+```bash
+docker compose pull
+docker compose up -d --force-recreate
+```
+
+生产环境建议固定镜像标签，并在验证后主动升级：
+
+```yaml
+image: gangz1o/glash:x.y.z
+```
+
+当前源码构建参数见 [`Dockerfile`](./Dockerfile)：
+
+| 组件 | 当前版本 |
+| --- | --- |
+| Alpine | 3.19 |
+| Mihomo | v1.19.30 |
+| MetacubexD | v1.273.0 |
+
+镜像内页面显示的版本取决于所使用的镜像标签，不一定与 `master` 分支当前值相同。
+
+## 运行时结构
+
+```text
+start.sh                         # 轻量入口
+lib/glash/
+├── app.sh                       # 启动流程编排
+├── common.sh                    # 日志与文件操作
+├── config.sh                    # 配置校验和变换
+├── cron.sh                      # 手动/定时更新任务
+├── environment.sh               # 环境变量规范化与校验
+├── hooks.sh                     # 订阅后 Hook
+├── mihomo.sh                    # Mihomo 进程和热加载
+└── subscription.sh              # 下载、锁和更新事务
+```
+
+## 本地开发与验证
+
+```bash
+# Shell 语法
+for script in start.sh lib/glash/*.sh tests/*.sh; do bash -n "$script"; done
+
+# 回归测试
+bash tests/test_mode.sh
+bash tests/test_reload.sh
+bash tests/test_modules.sh
+
+# 构建镜像
+docker build -t clash4docker-local .
+
+# 容器烟雾测试
+bash tests/test_container.sh clash4docker-local
+```
+
+Pull Request 会运行 Shell 测试、AMD64 容器烟雾测试和多架构构建检查，详情见 [`docs/ci.md`](./docs/ci.md)。
+
+## 社区与贡献
+
+有问题或建议可以提交 [Issue](https://github.com/gangz1o/clash4docker/issues)。提交前请先搜索本 README 的故障现象和已有 issue，并附上“内存持续增长”一节列出的环境与日志信息。
+
+- 论坛：[linux.do](https://linux.do/)
+- Mihomo 配置文档：[wiki.metacubex.one](https://wiki.metacubex.one/)
 
 ## Star History
 
-<a href="https://star-history.dera.page/#gangz1o/clash4docker&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=gangz1o/clash4docker&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=gangz1o/clash4docker&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=gangz1o/clash4docker&type=date&legend=top-left" />
- </picture>
-</a>
-
-### 一些可用docker加速源
-
-```bash
-https://docker.1ms.run
-https://docker.kejilion.pro
-https://docker-registry.nmqu.com
-https://docker.xuanyuan.me
-https://dockerproxy.net
-https://hub.rat.dev
-https://hub1.nat.tf
-https://hub2.nat.tf
-https://hub3.nat.tf
-https://hub4.nat.tf
-https://mirror.iscas.ac.cn
-https://docker.hpcloud.cloud
-https://docker.apiba.cn
-```
-
-## 版本信息
-
-- **Mihomo**: v1.19.22
-- **MetacubexD**: v1.244.2
-- **架构**: linux/amd64, linux/arm64
-
-## 社区交流
-
-有问题、有想法，或者就是想和一群搞开发的人聊聊？
-
-- **论坛**：[linux.do](https://linux.do/) —— 来这里讨论、分享你的配置、反馈问题，欢迎常驻。
+[![Star History Chart](https://star-history.dera.page/svg?repos=gangz1o/clash4docker&type=date&legend=top-left)](https://star-history.dera.page/#gangz1o/clash4docker&type=date&legend=top-left)
 
 ## 致谢
 
 感谢以下开源项目：
 
-- [Mihomo](https://github.com/MetaCubeX/mihomo) - 强大的代理内核
-- [MetacubexD](https://github.com/MetaCubeX/metacubexd) - 现代化 Web Dashboard
+- [Mihomo](https://github.com/MetaCubeX/mihomo)
+- [MetacubexD](https://github.com/MetaCubeX/metacubexd)
+
 <!-- DolOffer 赞助广告开始 -->
 <div align="center">
   <table border="0">
@@ -502,18 +664,17 @@ https://docker.apiba.cn
           <img src="https://cdn.nodeimage.com/i/MbENUNiyjRdvIRrt0GjLTv6mhi41zPO0.webp" alt="DolOffer Logo" height="160"/>
         </a>
         <p align="left" style="font-size: 15px; color: #24292f; margin: 10px 0;">
-          全网超划算的 <b>ChatGPT Plus / Claude Pro</b> 会员充值平台！支持官方正版订阅，独立账号、共享车位应有尽有。多通道稳定续费，售后无忧，让您用更低的成本体验最顶尖的 AI 工具。
+          全网超划算的 <b>ChatGPT Plus / Claude Pro</b> 会员充值平台。多通道稳定续费，售后无忧。
         </p>
         <p align="left" style="font-size: 14px; color: #57606a;">
-          🎁 专属 <b>9 折</b> 优惠码：<code>ai8888</code>（全场通用）<br>
-          🔗 立即前往：<a href="https://doloffer.com" target="_blank"><b>DolOffer 官方网站</b></a> ｜ 📖 <a href="https://github.com/doloffer-g/guide" target="_blank"><b>Doloffer Guide</b></a>
+          🎁 专属 <b>9 折</b> 优惠码：<code>ai8888</code><br>
+          🔗 <a href="https://doloffer.com" target="_blank"><b>DolOffer 官方网站</b></a> ｜ <a href="https://github.com/doloffer-g/guide" target="_blank"><b>使用指南</b></a>
         </p>
       </td>
     </tr>
   </table>
 </div>
 <!-- DolOffer 赞助广告结束 -->
-
 
 ## License
 

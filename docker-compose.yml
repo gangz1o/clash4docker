@@ -4,7 +4,7 @@ services:
     container_name: glash
     restart: unless-stopped
 
-    # 网络模式: 使用 host 模式获得更好的性能，或使用 bridge 模式隔离
+    # 高级用法：host 模式会共享宿主网络命名空间，启用后请删除 ports
     # network_mode: host
 
     ports:
@@ -19,6 +19,8 @@ services:
       - ./config:/root/.config/mihomo
       # 或者挂载单个配置文件（不使用订阅功能时）
       # - ./config.yaml:/root/.config/mihomo/config.yaml:ro
+      # 可选：订阅下载后执行的自定义配置 Hook（脚本需有执行权限）
+      # - ./hooks.d:/app/hooks.d:ro
 
     environment:
       - TZ=Asia/Shanghai
@@ -34,13 +36,26 @@ services:
       # - SUB_CRON=0 */6 * * *
       # Dashboard 登录密钥（会自动注入到配置文件中）
       # - SECRET=your-secret-here
+      # 允许局域网设备连接代理端口
+      # - ALLOW_LAN=true
+      # 固定 HTTP、SOCKS5、Mixed 代理端口，避免订阅更新后改变容器内端口
+      # - HTTP_PORT=7890
+      # - SOCKS_PORT=7891
+      # - MIXED_PORT=7892
+      # HTTP、SOCKS5、Mixed 代理认证，多个账号用逗号分隔
+      # - AUTHENTICATION=user:password
       # 固定代理模式（rule、global 或 direct）
       # - MODE=global
       # TUN 模式开关（同时需要取消下方 cap_add 和 devices 的注释）
-      - TUN_ENABLED=true
+      # - TUN_ENABLED=true
+      # 某些 NAS 内核不支持 auto-redirect，可显式关闭
+      # - TUN_AUTO_REDIRECT=false
       # DNS 覆写开关
-      - DNS_OVERRIDE=true
-
+      # - DNS_OVERRIDE=true
+      # 首次下载无法直连时使用的外部代理
+      # - DOWNLOAD_PROXY=http://192.168.1.1:7890
+      # 订阅请求 User-Agent
+      # - SUB_USER_AGENT=clash.meta
 
     # 如果需要 TUN 模式，取消下面的注释
     # cap_add:
@@ -81,3 +96,6 @@ services:
 #       - SUB_URL=https://your-subscription-url.com/config
 #       - SUB_CRON=0 */6 * * *
 #       - SECRET=your-dashboard-password
+#       - HTTP_PORT=7890
+#       - SOCKS_PORT=7891
+#       - MIXED_PORT=7892
