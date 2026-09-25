@@ -25,7 +25,7 @@ write_update_script() {
     local name
 
     printf '%s\n' '#!/bin/bash' 'set -u' > "${UPDATE_SCRIPT}" || return 1
-    for name in SUB_URL SECRET ALLOW_LAN MODE TUN_ENABLED TUN_AUTO_REDIRECT DNS_OVERRIDE SUB_USER_AGENT AUTHENTICATION DOWNLOAD_PROXY HTTP_PORT SOCKS_PORT MIXED_PORT FORCE_UNIFIED_DELAY_AND_TCP_CONCURRENT SAFE_PATHS; do
+    for name in SUB_URL SECRET ALLOW_LAN IPV6_ENABLED MODE TUN_ENABLED TUN_AUTO_REDIRECT DNS_OVERRIDE SUB_USER_AGENT AUTHENTICATION DOWNLOAD_PROXY HTTP_PORT SOCKS_PORT MIXED_PORT FORCE_UNIFIED_DELAY_AND_TCP_CONCURRENT SAFE_PATHS; do
         printf 'export %s=%q\n' "${name}" "${!name}" >> "${UPDATE_SCRIPT}" || return 1
     done
     printf '%s\n' 'source /app/start.sh' 'update_subscription' >> "${UPDATE_SCRIPT}" || return 1

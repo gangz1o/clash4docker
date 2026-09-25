@@ -265,6 +265,7 @@ curl -x http://alice:password@192.168.1.10:7890 https://www.gstatic.com/generate
 | --- | --- | --- |
 | `SECRET` | 任意单行字符串 | Dashboard/API 密钥；使用定时更新时应与运行中配置一致 |
 | `ALLOW_LAN` | `true` / `false` | 是否允许局域网访问代理端口 |
+| `IPV6_ENABLED` | `true` / `false` | 同时覆写顶层 `ipv6` 和 `dns.ipv6`；未设置或为空时保留原值，在 `DNS_OVERRIDE` 之后生效 |
 | `MODE` | `rule` / `global` / `direct` | 固定 Mihomo 运行模式 |
 | `HTTP_PORT` | `1`–`65535` | 覆写顶层 `port` |
 | `SOCKS_PORT` | `1`–`65535` | 覆写顶层 `socks-port` |
