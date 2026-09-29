@@ -283,6 +283,75 @@ inject_dns() {
     log_info "✅ DNS 配置已覆写"
 }
 
+update_ipv6() {
+    local config="$1"
+    local ipv6_enabled="$2"
+    local temp_file
+
+    [ -z "${ipv6_enabled}" ] && return 0
+    validate_optional_boolean IPV6_ENABLED "${ipv6_enabled}" || return 1
+    temp_file=$(make_sibling_temp "${config}" ipv6) || return 1
+    # 与现有覆写一致，使用 awk 处理块状 YAML，只替换 dns 的直接子键。
+    # 复杂内联映射/别名不能安全地按行修改，拒绝覆写并保留原文件。
+    if ! LC_ALL=C awk -v target=dns -v enabled="${ipv6_enabled}" "
+        ${top_level_key_matches_awk}
+        function finish_dns() {
+            if (in_dns && !inserted) print \"  ipv6: \" enabled
+            in_dns = 0
+        }
+        NR == 1 && substr(\$0, 1, 3) == \"\357\273\277\" {
+            printf \"%s\", substr(\$0, 1, 3)
+            \$0 = substr(\$0, 4)
+        }
+        matches_key(\$0) {
+            value = \$0
+            sub(/^[^:]*:[[:space:]]*/, \"\", value)
+            sub(/[[:space:]]*#.*/, \"\", value)
+            sub(/[[:space:]]*\$/, \"\", value)
+            if (seen++ || (value != \"\" && value != \"{}\")) {
+                failed = 1
+                exit 1
+            }
+            print \"dns:\"
+            in_dns = 1
+            next
+        }
+        in_dns && /^[^[:space:]#]/ { finish_dns() }
+        in_dns && /^[[:space:]]*[^[:space:]#]/ {
+            match(\$0, /[^[:space:]]/)
+            indent = RSTART - 1
+            if (!inserted) {
+                child_indent = indent
+                printf \"%*sipv6: %s\\n\", child_indent, \"\", enabled
+                inserted = 1
+            }
+            key = \$0
+            sub(/^[[:space:]]*/, \"\", key)
+            if (indent == child_indent) {
+                target = \"ipv6\"
+                is_ipv6 = matches_key(key)
+                target = \"dns\"
+                if (is_ipv6) next
+            }
+        }
+        { print }
+        END {
+            if (!failed) {
+                finish_dns()
+                if (!seen) print \"dns:\\n  ipv6: \" enabled
+            }
+        }
+    " "${config}" > "${temp_file}" || \
+        ! replace_top_level_scalar "${temp_file}" ipv6 "${ipv6_enabled}" || \
+        ! replace_file "${temp_file}" "${config}"; then
+        rm -f "${temp_file}"
+        log_error "❌ IPv6 配置覆写失败（dns 需使用单个块状映射）"
+        return 1
+    fi
+    rm -f "${temp_file}"
+    log_info "✅ ipv6 和 dns.ipv6 已更新为 ${ipv6_enabled}"
+}
+
 update_allow_lan() {
     local config="$1"
     local allow_lan="$2"
@@ -333,6 +402,7 @@ apply_config_overrides() {
     fi
     inject_tun "${config}" "${TUN_ENABLED}" "${TUN_AUTO_REDIRECT}" || return 1
     inject_dns "${config}" "${DNS_OVERRIDE}" || return 1
+    update_ipv6 "${config}" "${IPV6_ENABLED}" || return 1
     if [ "${ensure_defaults}" = "true" ]; then
         ensure_external_controller "${config}" || return 1
     fi

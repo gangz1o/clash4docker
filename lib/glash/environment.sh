@@ -5,6 +5,7 @@
 : "${SUB_CRON:=}"
 : "${DOWNLOAD_PROXY:=}"
 : "${ALLOW_LAN:=}"
+: "${IPV6_ENABLED:=}"
 : "${MODE:=}"
 : "${TUN_ENABLED:=}"
 : "${DNS_OVERRIDE:=}"
@@ -68,7 +69,7 @@ validate_optional_port() {
 
 load_environment() {
     local name
-    for name in SUB_URL SECRET SUB_CRON DOWNLOAD_PROXY ALLOW_LAN MODE TUN_ENABLED TUN_AUTO_REDIRECT DNS_OVERRIDE SUB_USER_AGENT AUTHENTICATION HTTP_PORT SOCKS_PORT MIXED_PORT FORCE_UNIFIED_DELAY_AND_TCP_CONCURRENT; do
+    for name in SUB_URL SECRET SUB_CRON DOWNLOAD_PROXY ALLOW_LAN IPV6_ENABLED MODE TUN_ENABLED TUN_AUTO_REDIRECT DNS_OVERRIDE SUB_USER_AGENT AUTHENTICATION HTTP_PORT SOCKS_PORT MIXED_PORT FORCE_UNIFIED_DELAY_AND_TCP_CONCURRENT; do
         reject_multiline_value "${name}" "${!name}" || return 1
         printf -v "${name}" '%s' "$(strip_outer_quotes "${!name}")"
         reject_multiline_value "${name}" "${!name}" || return 1
@@ -83,6 +84,7 @@ load_environment() {
     esac
 
     validate_optional_boolean ALLOW_LAN "${ALLOW_LAN}" || return 1
+    validate_optional_boolean IPV6_ENABLED "${IPV6_ENABLED}" || return 1
     validate_optional_boolean TUN_ENABLED "${TUN_ENABLED}" || return 1
     validate_optional_boolean TUN_AUTO_REDIRECT "${TUN_AUTO_REDIRECT}" || return 1
     validate_optional_boolean DNS_OVERRIDE "${DNS_OVERRIDE}" || return 1

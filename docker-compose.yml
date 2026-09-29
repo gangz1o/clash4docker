@@ -38,6 +38,8 @@ services:
       # - SECRET=your-secret-here
       # 允许局域网设备连接代理端口
       # - ALLOW_LAN=true
+      # 同时覆写 ipv6 和 dns.ipv6；不设置时保留原配置
+      # - IPV6_ENABLED=true
       # 固定 HTTP、SOCKS5、Mixed 代理端口，避免订阅更新后改变容器内端口
       # - HTTP_PORT=7890
       # - SOCKS_PORT=7891
