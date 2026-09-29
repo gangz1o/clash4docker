@@ -322,7 +322,8 @@ update_ipv6() {
             indent = RSTART - 1
             if (!inserted) {
                 child_indent = indent
-                printf \"%*sipv6: %s\\n\", child_indent, \"\", enabled
+                # BusyBox awk 不支持动态宽度 %*s，直接保留原行的缩进。
+                print substr(\$0, 1, child_indent) \"ipv6: \" enabled
                 inserted = 1
             }
             key = \$0

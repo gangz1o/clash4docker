@@ -69,6 +69,13 @@ jobs:
       - name: Run mode tests
         run: bash tests/test_mode.sh
 
+      - name: Run mode and IPv6 tests with Alpine BusyBox awk
+        run: |
+          docker run --rm -v "$PWD:/src:ro" -w /src alpine:3.19 sh -ec '
+            apk add --no-cache bash sed grep
+            bash tests/test_mode.sh
+          '
+
       - name: Run reload tests
         run: bash tests/test_reload.sh
 
