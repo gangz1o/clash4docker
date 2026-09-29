@@ -128,6 +128,7 @@ install_subscription_config() {
     fi
     rm -f "${candidate}"
     [ -n "${backup_file}" ] && rm -f "${backup_file}"
+    return 0
 }
 
 restore_config_backup() {

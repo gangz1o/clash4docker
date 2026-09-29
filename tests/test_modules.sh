@@ -320,4 +320,25 @@ fi
     fi
 )
 
+# 首次安装没有备份文件，成功写入后仍必须返回成功并启动内核。
+(
+    CONFIG_FILE="${TEST_DIR}/first-start.yaml"
+    SUB_URL='https://example.invalid/sub'
+    DOWNLOAD_PROXY=''
+    build_subscription_candidate() {
+        printf '%s\n' 'mixed-port: 7890' 'proxies: []' > "$1"
+    }
+    STARTED=false
+    start_mihomo() {
+        assert_file_contains "${CONFIG_FILE}" 'mixed-port: 7890'
+        STARTED=true
+    }
+    if ! start_subscription_mode_without_config; then
+        echo '首次订阅安装成功后不应被判定为失败' >&2
+        exit 1
+    fi
+    [ "${STARTED}" = true ]
+    [ -z "$(find "${TEST_DIR}" -name 'first-start.yaml.*' -print)" ]
+)
+
 echo '模块回归测试通过'
